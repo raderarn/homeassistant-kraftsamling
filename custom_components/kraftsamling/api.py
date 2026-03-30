@@ -6,64 +6,84 @@ from datetime import datetime
 _LOGGER = logging.getLogger(__name__)
 
 class KraftsamlingAPI:
-    """ApiClient for Dalakraft IO."""
-
-    def __init__(self, api_key: str, session: aiohttp.ClientSession):
-        self.api_key = api_key
+    def __init__(self, username, password, session: aiohttp.ClientSession):
+        self.username = username
+        self.password = password
         self._session = session
-        # New Base URL for Dalakraft IO
-        self.base_url = "https://io.dalakraft.se/api/v1"
+        self.base_url = "https://io.dalakraft.se"
+        self._token = None
+
+    async def _async_get_token(self):
+        """Login and get the authToken from tokenUsers."""
+        url = f"{self.base_url}/Auth"
+        payload = {"User": self.username, "password": self.password}
+        
+        async with async_timeout.timeout(10):
+            response = await self._session.post(url, json=payload)
+            response.raise_for_status()
+            res_data = await response.json()
+            # Path based on your PowerShell: $Result.tokenUsers.authToken
+            self._token = res_data.get("tokenUsers", {}).get("authToken")
+            
+        if not self._token:
+            raise Exception("Could not find authToken in response")
 
     async def get_facilities(self) -> list:
-        """Fetch all billing points (facilities) from Dalakraft IO."""
-        url = f"{self.base_url}/BillingPoints"
-        headers = {
-            "X-API-KEY": self.api_key, # Check if it's X-API-KEY or Bearer in Swagger
-            "Accept": "application/json"
-        }
+        """Fetch billing points from .billingPoints."""
+        if not self._token:
+            await self._async_get_token()
 
-        try:
-            async with async_timeout.timeout(10):
+        url = f"{self.base_url}/Billingpoints"
+        headers = {"Authorization": self._token} # Skriptet skickar token rakt av
+
+        async with async_timeout.timeout(10):
+            response = await self._session.get(url, headers=headers)
+            if response.status == 401: # Token expired
+                await self._async_get_token()
+                headers["Authorization"] = self._token
                 response = await self._session.get(url, headers=headers)
-                response.raise_for_status()
-                data = await response.json()
-                # Dalakraft returns a list of billing points. 
-                # We need the 'id' (often GUID) for each.
-                return data 
-        except Exception as err:
-            _LOGGER.error("Failed to fetch billing points from Dalakraft: %s", err)
-            return []
+            
+            response.raise_for_status()
+            data = await response.json()
+            # Based on your PowerShell: $Billingpoints.billingPoints
+            return data.get("billingPoints", [])
 
-    async def get_consumption_data(self, billing_point_id: str, start_dt: datetime) -> list:
-        """Fetch hourly volumes for a specific billing point."""
-        start_str = start_dt.strftime("%Y-%m-%d") # API might prefer YYYY-MM-DD
+    async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
+        """Fetch volumes via POST request."""
+        if not self._token:
+            await self._async_get_token()
+
+        # We fetch one day at a time or a range. 
+        # For Energy Dashboard, we want 'hour' resolution if possible.
+        # If 'hour' isn't supported, we use 'day'.
+        url = f"{self.base_url}/Billingpoints/volumes"
         
-        # Endpoint: /api/v1/BillingPoints/{id}/Volumes
-        url = f"{self.base_url}/BillingPoints/{billing_point_id}/Volumes"
-        params = {
-            "from": start_str,
-            "resolution": "Hour" 
+        # End date is usually now or midnight
+        end_dt = datetime.now()
+        
+        payload = {
+            "billingpoints": [external_id],
+            "resolution": "hour", # Skriptet hade "month", men Energy Dashboard vill ha "hour"
+            "periodStart": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            "periodEnd": end_dt.strftime("%Y-%m-%dT%H:%M:%S")
         }
-        headers = {
-            "X-API-KEY": self.api_key,
-            "Accept": "application/json"
-        }
+        
+        headers = {"Authorization": self._token}
 
-        try:
-            async with async_timeout.timeout(20):
-                response = await self._session.get(url, headers=headers, params=params)
-                response.raise_for_status()
-                data = await response.json()
-                
-                # Dalakraft IO typically returns: {"date": "...", "value": ...}
-                # Check your Swagger 'Response Body' to confirm field names!
-                return [
-                    {
-                        "timestamp": datetime.fromisoformat(item["date"].replace("Z", "+00:00")),
-                        "consumption": float(item["value"])
-                    }
-                    for item in data if item.get("value") is not None
-                ]
-        except Exception as err:
-            _LOGGER.warning("Could not fetch volumes for %s: %s", billing_point_id, err)
-            return []
+        async with async_timeout.timeout(20):
+            response = await self._session.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            data = await response.json()
+            
+            # The structure in PowerShell was $Values.consumptions.quantity
+            # If resolution is 'hour', consumptions is likely a list.
+            consumptions = data.get("consumptions", [])
+            
+            results = []
+            for item in consumptions:
+                if item.get("quantity") is not None:
+                    results.append({
+                        "timestamp": datetime.fromisoformat(item["periodStart"].replace("Z", "+00:00")),
+                        "consumption": float(item["quantity"])
+                    })
+            return results
