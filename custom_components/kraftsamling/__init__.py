@@ -1,13 +1,19 @@
 """The Kraftsamling integration."""
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .const import DOMAIN, CONF_API_KEY, CONF_START_DATE
+from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD, CONF_START_DATE
 from .api import KraftsamlingAPI
 from .coordinator import KraftsamlingCoordinator
 
 async def async_setup_entry(hass, entry):
     """Set up Kraftsamling from a config entry."""
     session = async_get_clientsession(hass)
-    api = KraftsamlingAPI(entry.data[CONF_API_KEY], session)
+    
+    # We now pass both Username and Password to the API client
+    api = KraftsamlingAPI(
+        entry.data[CONF_USERNAME], 
+        entry.data[CONF_PASSWORD], 
+        session
+    )
     
     coordinator = KraftsamlingCoordinator(hass, api, entry.data[CONF_START_DATE])
     
