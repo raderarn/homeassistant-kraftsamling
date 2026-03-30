@@ -6,8 +6,7 @@
           "username": "Kund-ID",
           "password": "API-nyckel",
           "start_date": "Startdatum (ÅÅÅÅ-MM-DD)"
-        },
-        "description": "Ange dina inloggningsuppgifter för Dalakraft IO. Använd ditt numeriska Kund-ID och din GUID-nyckel."
+        }
       }
     }
   }
