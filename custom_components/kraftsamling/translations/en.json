@@ -1,0 +1,14 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "username": "CustomerId",
+          "password": "API-Key",
+          "start_date": "Start Date (YYYY-MM-DD)"
+        },
+        "description": "Please enter your Dalakraft IO credentials. Use your CustomerId as username and your GUID as API-Key."
+      }
+    }
+  }
+}
