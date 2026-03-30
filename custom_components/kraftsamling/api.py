@@ -6,7 +6,10 @@ from datetime import datetime
 _LOGGER = logging.getLogger(__name__)
 
 class KraftsamlingAPI:
+    """API client for Dalakraft IO electricity data."""
+
     def __init__(self, username, password, session: aiohttp.ClientSession):
+        """Initialize the API client."""
         self.username = username
         self.password = password
         self._session = session
@@ -14,7 +17,7 @@ class KraftsamlingAPI:
         self._token = None
 
     async def _async_get_token(self):
-        """Login and get the authToken from tokenUsers."""
+        """Authenticate with the service and retrieve a bearer token."""
         url = f"{self.base_url}/Auth"
         payload = {"User": self.username, "password": self.password}
         
@@ -22,48 +25,50 @@ class KraftsamlingAPI:
             response = await self._session.post(url, json=payload)
             response.raise_for_status()
             res_data = await response.json()
-            # Path based on your PowerShell: $Result.tokenUsers.authToken
-            self._token = res_data.get("tokenUsers", {}).get("authToken")
+            
+            # Extract the authorization token from the response structure
+            token_info = res_data.get("tokenUsers", {})
+            self._token = token_info.get("authToken")
             
         if not self._token:
-            raise Exception("Could not find authToken in response")
+            _LOGGER.error("Authentication failed: No authToken found in response")
+            raise Exception("Access denied")
 
     async def get_facilities(self) -> list:
-        """Fetch billing points from .billingPoints."""
+        """Fetch all billing points associated with the user account."""
         if not self._token:
             await self._async_get_token()
 
         url = f"{self.base_url}/Billingpoints"
-        headers = {"Authorization": self._token} # Skriptet skickar token rakt av
+        headers = {"Authorization": self._token}
 
         async with async_timeout.timeout(10):
             response = await self._session.get(url, headers=headers)
-            if response.status == 401: # Token expired
+            
+            # Handle token expiration (re-authenticate if 401 Unauthorized)
+            if response.status == 401:
                 await self._async_get_token()
                 headers["Authorization"] = self._token
                 response = await self._session.get(url, headers=headers)
             
             response.raise_for_status()
             data = await response.json()
-            # Based on your PowerShell: $Billingpoints.billingPoints
+            
+            # Return the list of available billing points
             return data.get("billingPoints", [])
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
-        """Fetch volumes via POST request."""
+        """Fetch hourly consumption volumes for a specific billing point."""
         if not self._token:
             await self._async_get_token()
 
-        # We fetch one day at a time or a range. 
-        # For Energy Dashboard, we want 'hour' resolution if possible.
-        # If 'hour' isn't supported, we use 'day'.
         url = f"{self.base_url}/Billingpoints/volumes"
-        
-        # End date is usually now or midnight
         end_dt = datetime.now()
         
+        # Define the request payload for hourly resolution
         payload = {
             "billingpoints": [external_id],
-            "resolution": "hour", # Skriptet hade "month", men Energy Dashboard vill ha "hour"
+            "resolution": "hour",
             "periodStart": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
             "periodEnd": end_dt.strftime("%Y-%m-%dT%H:%M:%S")
         }
@@ -75,15 +80,17 @@ class KraftsamlingAPI:
             response.raise_for_status()
             data = await response.json()
             
-            # The structure in PowerShell was $Values.consumptions.quantity
-            # If resolution is 'hour', consumptions is likely a list.
+            # Process consumption entries and format for Home Assistant
             consumptions = data.get("consumptions", [])
-            
             results = []
+            
             for item in consumptions:
-                if item.get("quantity") is not None:
+                quantity = item.get("quantity")
+                if quantity is not None:
+                    # Parse timestamp and ensure it is timezone aware (UTC)
+                    ts_str = item["periodStart"].replace("Z", "+00:00")
                     results.append({
-                        "timestamp": datetime.fromisoformat(item["periodStart"].replace("Z", "+00:00")),
-                        "consumption": float(item["quantity"])
+                        "timestamp": datetime.fromisoformat(ts_str),
+                        "consumption": float(quantity)
                     })
             return results
