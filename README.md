@@ -1,3 +1,4 @@
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 # Kraftsamling for Home Assistant
 
 This integration fetches electricity consumption data from the [Kraftsamling API](https://api.kraftsamling.se/swagger/index.html) and injects it directly into the Home Assistant **Energy Dashboard**.
