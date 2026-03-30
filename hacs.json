@@ -1,0 +1,7 @@
+{
+  "name": "Kraftsamling",
+  "content_type": "integration",
+  "domains": ["kraftsamling"],
+  "homeassistant": "2024.1.0",
+  "render_readme": true
+}
