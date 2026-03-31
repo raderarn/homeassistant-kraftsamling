@@ -3,7 +3,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo_white.png">
-    <img src="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo.png" width="200" alt="Dalakraft Logo">
+    <img alt="Dalakraft" src="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo.png" width="250">
   </picture>
 </p>
 
