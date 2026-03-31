@@ -13,9 +13,8 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Kraftsamling from a config entry."""
     
-    # 1. Lägg till lyssnare för att kunna uppdatera inställningar (Options Flow)
-    # Detta gör att integrationen laddas om automatiskt när du ändrar ID/nyckel.
-    entry.async_on_unload(entry.add_to_hass_prev_update_listener(update_listener))
+    # KORRIGERAD RAD: Metoden heter add_update_listener
+    entry.async_on_unload(entry.add_update_listener(update_listener))
 
     # Use the shared Home Assistant aiohttp session
     session = async_get_clientsession(hass)
@@ -27,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session
     )
     
-    # Initialize the DataUpdateCoordinator. 
+    # Initialize the DataUpdateCoordinator
     coordinator = KraftsamlingCoordinator(hass, api, entry)
     
     # Store the coordinator in hass.data
@@ -45,7 +44,6 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    # Remove the coordinator from hass.data
     if entry.entry_id in hass.data[DOMAIN]:
         hass.data[DOMAIN].pop(entry.entry_id)
     return True
