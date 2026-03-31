@@ -1,7 +1,7 @@
 # Kraftsamling for Home Assistant
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo.png" width="200" alt="Dalakraft Logo">
+  <img src="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/logo.png" width="200" alt="Dalakraft Logo">
 </p>
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
