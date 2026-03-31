@@ -48,7 +48,7 @@ class KraftsamlingAPI:
         url = f"{self.base_url}/Billingpoints"
         
         try:
-            return await self._make_request("GET", url)
+            return ("GET", url)
         except Exception as err:
             _LOGGER.error("Failed to fetch billing points: %s", err)
             return []
@@ -68,7 +68,7 @@ class KraftsamlingAPI:
             try:
                 # data will now be the raw list returned from the API
                 data = await self._make_request("POST", url, json_payload=payload)
-                
+                _LOGGER.debug("RAW API RESPONSE: %s", data)
                 # The API returns a list of consumption objects directly
                 # If it's already a list, we use it. If not, we try to get 'consumptions'
                 consumptions = data if isinstance(data, list) else data.get("consumptions", [])
