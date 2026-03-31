@@ -9,12 +9,7 @@ class KraftsamlingAPI:
     """Class to communicate with the Dalakraft IO API."""
 
     def __init__(self, session: aiohttp.ClientSession, username: str, password: str):
-        """
-        Initialize the API client.
-        
-        :param username: This is the Customer ID from Home Assistant config
-        :param password: This is the API Key from Home Assistant config
-        """
+        """Initialize the API client."""
         self.session = session
         self.username = str(username)
         self.password = password
@@ -33,10 +28,7 @@ class KraftsamlingAPI:
         }
 
     async def async_authenticate(self) -> bool:
-        """
-        Fetch a Bearer token from the /auth endpoint.
-        Returns True if successful, otherwise False.
-        """
+        """Fetch an authToken from the /auth endpoint."""
         url = f"{self.base_url}/auth"
         payload = {
             "customerid": self.username,
@@ -53,10 +45,14 @@ class KraftsamlingAPI:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    self._token = data.get("token")
+                    # Updated to use 'authToken' as per your findings
+                    self._token = data.get("authToken")
+                    
                     if self._token:
+                        _LOGGER.debug("Authentication successful, authToken received.")
                         return True
-                    _LOGGER.error("Auth response missing 'token' field")
+                    
+                    _LOGGER.error("Auth response missing 'authToken' field. Received: %s", data)
                 else:
                     _LOGGER.error("Authentication failed with status %s", response.status)
                 return False
@@ -65,11 +61,7 @@ class KraftsamlingAPI:
             return False
 
     async def async_get_billingpoints(self) -> List[Any]:
-        """
-        Fetch billing points. 
-        Returns a list of facilities or an empty list if it fails.
-        """
-        # Ensure we have a token
+        """Fetch billing points with automatic authentication."""
         if not self._token:
             if not await self.async_authenticate():
                 return []
@@ -81,10 +73,14 @@ class KraftsamlingAPI:
         try:
             async with self.session.get(url, headers=headers, timeout=10) as response:
                 if response.status == 401:
-                    _LOGGER.warning("Token expired, retrying once...")
+                    _LOGGER.warning("Unauthorized (401), attempting re-authentication.")
                     self._token = None
-                    # Recursive call once after clearing token
-                    return await self.async_get_billingpoints()
+                    if await self.async_authenticate():
+                        # Update headers with the new token
+                        headers["Authorization"] = f"Bearer {self._token}"
+                        async with self.session.get(url, headers=headers) as retry_resp:
+                            return await retry_resp.json()
+                    return []
                 
                 response.raise_for_status()
                 return await response.json()
@@ -93,10 +89,7 @@ class KraftsamlingAPI:
             return []
 
     async def async_get_volumes(self, billingpoints: List[str], start_date: str, end_date: str) -> List[Any]:
-        """
-        Fetch energy consumption volumes.
-        Dates must be ISO strings without 'Z' (e.g. 2024-01-01T00:00:00).
-        """
+        """Fetch energy consumption volumes using authToken."""
         if not self._token:
             if not await self.async_authenticate():
                 return []
