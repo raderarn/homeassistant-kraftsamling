@@ -49,7 +49,7 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return self.async_abort(reason="no_facilities")
             
             facility_options = {
-                f["externalId"]: f"{f.get('installationAddress', 'Unknown address')} ({f['externalId']})"
+                f["externalId"]: f"{f.get('installationAddress', 'Okänd adress')} ({f['externalId']})"
                 for f in facilities
             }
 
@@ -92,27 +92,31 @@ class KraftsamlingOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
-            # Vi uppdaterar config_entry.data direkt för att ändra ID/Nyckel
+            # Uppdatera existerande data
+            new_data = dict(self.config_entry.data)
+            new_data.update(user_input)
+            
             self.hass.config_entries.async_update_entry(
                 self.config_entry, 
-                data={**self.config_entry.data, **user_input}
+                data=new_data
             )
             return self.async_create_entry(title="", data={})
 
+        # Hämtar nuvarande värden för att förifylla formuläret
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
                 vol.Required(
                     CONF_USERNAME, 
-                    default=self.config_entry.data.get(CONF_USERNAME)
+                    default=self.config_entry.data.get(CONF_USERNAME, "")
                 ): str,
                 vol.Required(
                     CONF_PASSWORD, 
-                    default=self.config_entry.data.get(CONF_PASSWORD)
+                    default=self.config_entry.data.get(CONF_PASSWORD, "")
                 ): str,
                 vol.Required(
                     CONF_START_DATE, 
-                    default=self.config_entry.data.get(CONF_START_DATE)
+                    default=self.config_entry.data.get(CONF_START_DATE, "2024-01-01")
                 ): str,
             }),
         )
