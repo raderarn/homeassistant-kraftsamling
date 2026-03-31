@@ -92,17 +92,13 @@ class KraftsamlingOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
-            # Uppdatera existerande data
-            new_data = dict(self.config_entry.data)
-            new_data.update(user_input)
+            # FIX: Vi skapar en helt ny dictionary istället för att ändra den gamla
+            updated_data = dict(self.config_entry.data)
+            updated_data.update(user_input)
             
-            self.hass.config_entries.async_update_entry(
-                self.config_entry, 
-                data=new_data
-            )
-            return self.async_create_entry(title="", data={})
+            # Vi returnerar den nya datan här
+            return self.async_create_entry(title="", data=updated_data)
 
-        # Hämtar nuvarande värden för att förifylla formuläret
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
