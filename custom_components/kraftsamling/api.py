@@ -18,25 +18,23 @@ class KraftsamlingAPI:
 
     @property
     def _default_headers(self) -> dict:
-        """Standard headers required for all requests to Dalakraft IO."""
+        """Standard headers matching the PowerShell script."""
         return {
-            "X-Customer-Id": self.username,
-            "X-Api-Key": self.password,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "accept": "text/plain",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
 
     async def async_authenticate(self) -> bool:
-        """Fetch an authToken from the /auth endpoint."""
-        url = f"{self.base_url}/auth"
+        """Fetch authToken using the User/password structure."""
+        url = f"{self.base_url}/Auth"
+        # PowerShell uses @{"User"= $User;"password"= $password}
         payload = {
-            "customerid": self.username,
-            "apikey": self.password
+            "User": self.username,
+            "password": self.password
         }
 
         try:
-            _LOGGER.debug("Authenticating to %s", url)
             async with self.session.post(
                 url, 
                 json=payload, 
@@ -45,42 +43,40 @@ class KraftsamlingAPI:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Updated to use 'authToken' as per your findings
-                    self._token = data.get("authToken")
+                    # PowerShell path: $Result.tokenUsers.authToken
+                    token_users = data.get("tokenUsers", {})
+                    self._token = token_users.get("authToken")
                     
                     if self._token:
-                        _LOGGER.debug("Authentication successful, authToken received.")
+                        _LOGGER.debug("Successfully authenticated and retrieved authToken")
                         return True
-                    
-                    _LOGGER.error("Auth response missing 'authToken' field. Received: %s", data)
+                    _LOGGER.error("Auth response missing tokenUsers.authToken")
                 else:
-                    _LOGGER.error("Authentication failed with status %s", response.status)
+                    _LOGGER.error("Auth failed with status %s", response.status)
                 return False
         except Exception as err:
             _LOGGER.error("Error during authentication: %s", err)
             return False
 
     async def async_get_billingpoints(self) -> List[Any]:
-        """Fetch billing points with automatic authentication."""
+        """Fetch billing points using the raw authToken."""
         if not self._token:
             if not await self.async_authenticate():
                 return []
 
         url = f"{self.base_url}/Billingpoints"
         headers = self._default_headers.copy()
-        headers["Authorization"] = f"Bearer {self._token}"
+        # PowerShell: $header.Add("Authorization" , $authToken) -> No "Bearer "
+        headers["Authorization"] = self._token
 
         try:
             async with self.session.get(url, headers=headers, timeout=10) as response:
                 if response.status == 401:
-                    _LOGGER.warning("Unauthorized (401), attempting re-authentication.")
                     self._token = None
                     if await self.async_authenticate():
-                        # Update headers with the new token
-                        headers["Authorization"] = f"Bearer {self._token}"
+                        headers["Authorization"] = self._token
                         async with self.session.get(url, headers=headers) as retry_resp:
                             return await retry_resp.json()
-                    return []
                 
                 response.raise_for_status()
                 return await response.json()
@@ -89,19 +85,20 @@ class KraftsamlingAPI:
             return []
 
     async def async_get_volumes(self, billingpoints: List[str], start_date: str, end_date: str) -> List[Any]:
-        """Fetch energy consumption volumes using authToken."""
+        """Fetch volumes using periodStart/periodEnd keys."""
         if not self._token:
-            if not await self.async_authenticate():
-                return []
+            await self.async_authenticate()
 
         url = f"{self.base_url}/Billingpoints/volumes"
         headers = self._default_headers.copy()
-        headers["Authorization"] = f"Bearer {self._token}"
+        headers["Authorization"] = self._token
         
+        # PowerShell: "periodStart", "periodEnd" and "resolution"
         payload = {
             "billingpoints": billingpoints,
-            "from": start_date,
-            "to": end_date
+            "resolution": "hour",
+            "periodStart": start_date, # Format: yyyy-MM-dd
+            "periodEnd": end_date
         }
 
         try:
