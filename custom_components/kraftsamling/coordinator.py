@@ -1,4 +1,4 @@
-"""Data update coordinator for Kraftsamling integration."""
+"""Data update coordinator for Kraftsamling."""
 import logging
 from datetime import datetime, timedelta
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -14,29 +14,25 @@ from .const import DOMAIN, STATISTICS_ID_BASE
 _LOGGER = logging.getLogger(__name__)
 
 class KraftsamlingCoordinator(DataUpdateCoordinator):
-    """Data update coordinator for Kraftsamling integration."""
+    """Coordinator to fetch and import data."""
 
     def __init__(self, hass, api, config_entry):
-        """Initialize the coordinator."""
-        super().__init__(
-            hass, _LOGGER, name="Kraftsamling", update_interval=timedelta(hours=1)
-        )
+        """Initialize."""
+        super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=timedelta(hours=1))
         self.api = api
         self.config_entry = config_entry
-        start_date_str = config_entry.data.get("start_date", "2024-01-01")
-        self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        start_str = config_entry.data.get("start_date", "2024-01-01")
+        self.start_date = datetime.strptime(start_str, "%Y-%m-%d")
 
     async def _async_update_data(self):
-        """Fetch consumption data and sync with long-term statistics."""
+        """Fetch and sync statistics."""
         selected_ids = self.config_entry.data.get("selected_facilities", [])
-        
         if not selected_ids:
             return False
 
         for ext_id in selected_ids:
             try:
                 stat_id = f"{STATISTICS_ID_BASE}{ext_id}"
-                
                 last_stats = await get_instance(self.hass).async_add_executor_job(
                     get_last_statistics, self.hass, 1, stat_id, True, {"sum"}
                 )
@@ -54,11 +50,9 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
 
                 while fetch_cursor < now - timedelta(hours=1):
                     chunk_end = min(fetch_cursor + timedelta(days=30), now)
-                    start_str = fetch_cursor.strftime("%Y-%m-%d")
-                    end_str = chunk_end.strftime("%Y-%m-%d")
-
-                    _LOGGER.info("Fetching volumes for %s: %s to %s", ext_id, start_str, end_str)
-                    response_data = await self.api.async_get_volumes([ext_id], start_str, end_str)
+                    response_data = await self.api.async_get_volumes(
+                        [ext_id], fetch_cursor.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d")
+                    )
                     
                     new_entries = []
                     if isinstance(response_data, list) and len(response_data) > 0:
@@ -72,13 +66,12 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                         try:
                             ts = datetime.fromisoformat(entry["periodStart"].replace("Z", ""))
                             val = float(entry["quantity"])
-                            
                             if ts >= fetch_cursor:
                                 current_sum += val
                                 stats_to_import.append(
                                     StatisticData(start=ts, sum=current_sum, state=current_sum)
                                 )
-                        except (KeyError, ValueError, TypeError):
+                        except:
                             continue
 
                     if stats_to_import:
@@ -86,7 +79,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             has_mean=False,
                             has_sum=True,
                             name=f"Kraftsamling {ext_id}",
-                            source=DOMAIN,
+                            source=DOMAIN, # MUST be "kraftsamling"
                             statistic_id=stat_id,
                             unit_of_measurement="kWh",
                         )
@@ -94,9 +87,6 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                         fetch_cursor = stats_to_import[-1]["start"] + timedelta(hours=1)
                     else:
                         break
-
             except Exception as err:
-                _LOGGER.error("Error updating facility %s: %s", ext_id, err)
-                continue
-
+                _LOGGER.error("Update failed for %s: %s", ext_id, err)
         return True
