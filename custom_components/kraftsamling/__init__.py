@@ -13,37 +13,37 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Kraftsamling from a config entry."""
     
-    # KORRIGERAD RAD: Metoden heter add_update_listener
+    # Registrera lyssnare för Options Flow (kugghjulet)
     entry.async_on_unload(entry.add_update_listener(update_listener))
 
-    # Use the shared Home Assistant aiohttp session
+    # Använd delad aiohttp-session från Home Assistant
     session = async_get_clientsession(hass)
     
-    # Initialize the API client with stored credentials
+    # Initiera API-klienten med dina konstanter från const.py
     api = KraftsamlingAPI(
-        entry.data[CONF_USERNAME], 
-        entry.data[CONF_PASSWORD], 
+        entry.data.get(CONF_USERNAME), 
+        entry.data.get(CONF_PASSWORD), 
         session
     )
     
-    # Initialize the DataUpdateCoordinator
+    # Initiera koordinatören som hanterar datahämtningen
     coordinator = KraftsamlingCoordinator(hass, api, entry)
     
-    # Store the coordinator in hass.data
+    # Spara koordinatören i hass.data för åtkomst från sensor-plattformen
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # Trigger the first data refresh from the API
+    # Kör den första datahämtningen direkt vid start
     await coordinator.async_config_entry_first_refresh()
     
     return True
 
 async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update - reloads the integration."""
+    """Hantera omladdning när inställningar ändras via Options Flow."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Stäng ner integrationen snyggt."""
     if entry.entry_id in hass.data[DOMAIN]:
         hass.data[DOMAIN].pop(entry.entry_id)
     return True
