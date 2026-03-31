@@ -1,6 +1,7 @@
 import logging
 import voluptuous as vol
 from homeassistant import config_entries
+import homeassistant.helpers.config_validation as cv  # Added this for multi_select
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import DOMAIN, CONF_USERNAME, CONF_PASSWORD, CONF_START_DATE
 from .api import KraftsamlingAPI
@@ -25,7 +26,7 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._password = user_input[CONF_PASSWORD]
             self._start_date = user_input[CONF_START_DATE]
             
-            # Gå vidare till att hämta anläggningar
+            # Move to the next step to fetch and select facilities
             return await self.async_step_select_facilities()
 
         return self.async_show_form(
@@ -45,16 +46,16 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         api = KraftsamlingAPI(self._username, self._password, session)
 
         try:
-            # Här sker anslutningen och token-hämtningen
+            # Fetch facilities from the API
             facilities = await api.get_facilities()
             
             if not facilities:
                 _LOGGER.error("No facilities found for user %s", self._username)
                 return self.async_abort(reason="no_facilities")
             
-            # Skapa lista för UI:t. Vi använder externalId som nyckel.
+            # Create a dictionary of options for the UI
             facility_options = {
-                f["externalId"]: f"{f.get('installationAddress', 'Okänd adress')} ({f['externalId']})"
+                f["externalId"]: f"{f.get('installationAddress', 'Unknown address')} ({f['externalId']})"
                 for f in facilities
             }
 
@@ -69,16 +70,14 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     },
                 )
 
+            # Fix: Use cv.multi_select instead of vol.Subset
             return self.async_show_form(
                 step_id="select_facilities",
                 data_schema=vol.Schema({
-                    vol.Required("facilities"): vol.All(
-                        vol.Subset(facility_options), vol.Length(min=1)
-                    )
+                    vol.Required("facilities"): cv.multi_select(facility_options)
                 }),
             )
 
         except Exception as err:
             _LOGGER.error("Connection error during config flow: %s", err)
-            # Om det skiter sig här får du "cannot_connect"
             return self.async_abort(reason="cannot_connect")
