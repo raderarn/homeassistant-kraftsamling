@@ -16,64 +16,51 @@ class KraftsamlingAPI:
         self.session = session
         self.base_url = "https://io.dalakraft.se"
 
-    async def _make_request(self, method: str, url: str, json_payload=None) -> list | dict:
-        """Make an async HTTP request to the API."""
-        # Vi definierar headers EXAKT här för att vara säkra på att de skickas med
+    async def _make_request(self, method: str, url: str, json_payload=None):
+        """Make an async HTTP request with Swagger-mimicking headers."""
         headers = {
             "X-Customer-Id": self.customer_id,
             "X-Api-Key": self.api_key,
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "application/json, text/plain, */*",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         }
 
         try:
-            _LOGGER.debug("Sending %s request to %s", method, url)
             async with self.session.request(
-                method, 
-                url, 
-                headers=headers, 
-                json=json_payload, 
-                timeout=20,
-                allow_redirects=True # Säkerställ att vi följer redirects om de finns
+                method, url, headers=headers, json=json_payload, timeout=30
             ) as response:
-                
                 if response.status == 401:
-                    # Om det skiter sig loggar vi exakt vad som skickades (utan att röja hela nyckeln)
-                    _LOGGER.error(
-                        "Auth failed (401). URL: %s, CustomerID start: %s..., Key start: %s...", 
-                        url, self.customer_id[:4], self.api_key[:4]
-                    )
+                    _LOGGER.error("Auth failed (401) for %s. Check credentials.", url)
                     return []
                 
                 response.raise_for_status()
                 return await response.json()
-
-        except aiohttp.ClientResponseError as err:
-            _LOGGER.error("HTTP error %s for %s: %s", err.status, url, err.message)
-            return []
         except Exception as err:
-            _LOGGER.error("Unexpected error connecting to %s: %s", url, err)
+            _LOGGER.error("Error connecting to %s: %s", url, err)
             return []
 
     async def get_facilities(self) -> list:
         """Fetch all billing points (facilities)."""
         url = f"{self.base_url}/Billingpoints"
-        return await self._make_request("GET", url)
+        data = await self._make_request("GET", url)
+        if isinstance(data, list):
+            return data
+        return data.get("billingpoints", []) if isinstance(data, dict) else []
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
         """Fetch hourly consumption volumes."""
         url = f"{self.base_url}/Billingpoints/volumes"
-        end_dt = datetime.now()
         
+        # Dalakraft kräver ID som sträng i en lista
         payload = {
             "billingpoints": [str(external_id)],
             "resolution": "hour",
             "periodStart": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
-            "periodEnd": end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+            "periodEnd": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
         }
 
         data = await self._make_request("POST", url, json_payload=payload)
-        _LOGGER.debug("RAW API RESPONSE: %s", data)
         
         consumptions = []
         if isinstance(data, list) and len(data) > 0:
@@ -83,13 +70,10 @@ class KraftsamlingAPI:
 
         results = []
         for item in consumptions:
-            quantity = item.get("quantity")
-            start_time = item.get("periodStart")
-            if quantity is not None and start_time:
-                ts_str = start_time.replace("Z", "+00:00")
+            if "quantity" in item and "periodStart" in item:
+                ts_str = item["periodStart"].replace("Z", "+00:00")
                 results.append({
                     "timestamp": datetime.fromisoformat(ts_str),
-                    "consumption": float(quantity)
+                    "consumption": float(item["quantity"])
                 })
-        
         return results
