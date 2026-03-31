@@ -23,6 +23,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
         )
         self.api = api
         self.config_entry = config_entry
+        # Use a safe default if start_date is missing
         start_date_str = config_entry.data.get("start_date", "2024-01-01")
         self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
 
@@ -54,7 +55,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                 now = datetime.now()
                 current_sum = last_sum
 
-                # Fetch data in 30-day chunks to avoid API timeouts
+                # Fetch data in 30-day chunks to prevent timeouts
                 while fetch_cursor < now - timedelta(hours=1):
                     chunk_end = min(fetch_cursor + timedelta(days=30), now)
                     
@@ -63,23 +64,22 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
 
                     _LOGGER.info("Fetching volumes for %s: %s to %s", ext_id, start_str, end_str)
                     
-                    # API call
+                    # API call returns a list of objects
                     response_data = await self.api.async_get_volumes([ext_id], start_str, end_str)
                     
-                    # NAVIGATE THE JSON: [ { "consumptions": [ ... ] } ]
+                    # Target: response_data[0]["consumptions"]
                     new_entries = []
                     if isinstance(response_data, list) and len(response_data) > 0:
-                        # Extract the 'consumptions' list from the first object
                         new_entries = response_data[0].get("consumptions", [])
 
                     if not new_entries:
-                        _LOGGER.debug("No entries found in this chunk for %s", ext_id)
+                        _LOGGER.debug("No data found in this period for %s", ext_id)
                         break
 
                     stats_to_import = []
                     for entry in new_entries:
                         try:
-                            # MAP THE JSON KEYS: 'periodStart' and 'quantity'
+                            # Map Dalakraft JSON keys
                             ts = datetime.fromisoformat(entry["periodStart"].replace("Z", ""))
                             val = float(entry["quantity"])
                             
@@ -93,26 +93,26 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                                     )
                                 )
                         except (KeyError, ValueError, TypeError) as err:
-                            _LOGGER.error("Skipping malformed entry for %s: %s", ext_id, err)
+                            _LOGGER.error("Skipping entry for %s: %s", ext_id, err)
                             continue
 
                     if stats_to_import:
+                        # metadata['source'] MUST match DOMAIN exactly to avoid 'Invalid source'
                         metadata = StatisticMetaData(
                             has_mean=False,
                             has_sum=True,
                             name=f"Kraftsamling {ext_id}",
-                            source="kraftsamling",
+                            source=DOMAIN,
                             statistic_id=stat_id,
                             unit_of_measurement="kWh",
                         )
                         
-                        # Import statistics into Home Assistant recorder
+                        _LOGGER.debug("Importing %s hours of statistics", len(stats_to_import))
                         async_import_statistics(self.hass, metadata, stats_to_import)
                         
-                        # Update cursor to the last imported timestamp + 1 hour
+                        # Move cursor to the hour after the last imported entry
                         fetch_cursor = stats_to_import[-1]["start"] + timedelta(hours=1)
                     else:
-                        # No valid data in this chunk, stop to avoid infinite loop
                         break
 
             except Exception as err:
