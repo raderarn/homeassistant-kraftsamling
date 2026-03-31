@@ -57,7 +57,7 @@ class KraftsamlingAPI:
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
         """Fetch hourly consumption volumes via POST request."""
-        url = f"{self.base_url}/Billingpoints/volumes"
+        url = f"{self.base_url}/volumes"
         end_dt = datetime.now()
         
         payload = {
