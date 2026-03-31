@@ -27,7 +27,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
         self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
 
     async def _async_update_data(self):
-        """Fetch data from API and sync with Home Assistant statistics."""
+        """Fetch consumption data from API and sync with long-term statistics."""
         selected_ids = self.config_entry.data.get("selected_facilities", [])
         
         if not selected_ids:
@@ -38,7 +38,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
             try:
                 stat_id = f"{STATISTICS_ID_BASE}{ext_id}"
                 
-                # Get the last known statistic entry to find the sync gap
+                # Fetch last known statistic to determine where to resume
                 last_stats = await get_instance(self.hass).async_add_executor_job(
                     get_last_statistics, self.hass, 1, stat_id, True, {"sum"}
                 )
@@ -54,34 +54,34 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                 now = datetime.now()
                 current_sum = last_sum
 
-                # Process in 30-day chunks as per PowerShell/API limits
+                # Fetch data in 30-day chunks to avoid API timeouts
                 while fetch_cursor < now - timedelta(hours=1):
                     chunk_end = min(fetch_cursor + timedelta(days=30), now)
                     
-                    # Format dates for the API (yyyy-MM-dd)
                     start_str = fetch_cursor.strftime("%Y-%m-%d")
                     end_str = chunk_end.strftime("%Y-%m-%d")
 
-                    _LOGGER.info("Fetching %s volumes from %s to %s", ext_id, start_str, end_str)
+                    _LOGGER.info("Fetching volumes for %s: %s to %s", ext_id, start_str, end_str)
                     
-                    # API call using the new method from api.py
-                    # Note: API expects a list of billingpoints
+                    # API call
                     response_data = await self.api.async_get_volumes([ext_id], start_str, end_str)
                     
-                    # Based on PS script, we likely need to dig into the response
-                    # Adjust 'values' to match the actual key returned by Dalakraft
-                    new_entries = response_data if isinstance(response_data, list) else response_data.get("values", [])
+                    # NAVIGATE THE JSON: [ { "consumptions": [ ... ] } ]
+                    new_entries = []
+                    if isinstance(response_data, list) and len(response_data) > 0:
+                        # Extract the 'consumptions' list from the first object
+                        new_entries = response_data[0].get("consumptions", [])
 
                     if not new_entries:
+                        _LOGGER.debug("No entries found in this chunk for %s", ext_id)
                         break
 
                     stats_to_import = []
                     for entry in new_entries:
-                        # Map API fields to HA Statistics
-                        # Adjust key names ('timestamp'/'consumption') if Dalakraft uses different ones
                         try:
-                            ts = datetime.fromisoformat(entry["timestamp"].replace("Z", ""))
-                            val = float(entry["consumption"])
+                            # MAP THE JSON KEYS: 'periodStart' and 'quantity'
+                            ts = datetime.fromisoformat(entry["periodStart"].replace("Z", ""))
+                            val = float(entry["quantity"])
                             
                             if ts >= fetch_cursor:
                                 current_sum += val
@@ -92,8 +92,8 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                                         state=current_sum
                                     )
                                 )
-                        except (KeyError, ValueError) as err:
-                            _LOGGER.error("Skipping malformed entry: %s", err)
+                        except (KeyError, ValueError, TypeError) as err:
+                            _LOGGER.error("Skipping malformed entry for %s: %s", ext_id, err)
                             continue
 
                     if stats_to_import:
@@ -105,9 +105,14 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             statistic_id=stat_id,
                             unit_of_measurement="kWh",
                         )
+                        
+                        # Import statistics into Home Assistant recorder
                         async_import_statistics(self.hass, metadata, stats_to_import)
+                        
+                        # Update cursor to the last imported timestamp + 1 hour
                         fetch_cursor = stats_to_import[-1]["start"] + timedelta(hours=1)
                     else:
+                        # No valid data in this chunk, stop to avoid infinite loop
                         break
 
             except Exception as err:
