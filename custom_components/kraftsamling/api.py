@@ -12,7 +12,9 @@ class KraftsamlingAPI:
         """
         Initialize the API client.
         
-        IMPORTANT: The order of arguments must match the call in config_flow.py.
+        :param session: aiohttp.ClientSession provided by Home Assistant
+        :param username: Customer ID / User
+        :param password: API Key / Password
         """
         self.session = session
         self.username = str(username)
@@ -31,8 +33,8 @@ class KraftsamlingAPI:
 
     async def async_authenticate(self) -> bool:
         """
-        Fetch authToken using the User/password structure.
-        Based on the successful PowerShell authentication flow.
+        Fetch authToken by navigating the exact JSON structure:
+        data['tokenUsers'][0]['authToken']
         """
         url = f"{self.base_url}/Auth"
         payload = {
@@ -42,7 +44,6 @@ class KraftsamlingAPI:
 
         try:
             _LOGGER.debug("Attempting authentication for user: %s", self.username)
-            # self.session is now correctly received as an aiohttp.ClientSession object
             async with self.session.post(
                 url, 
                 json=payload, 
@@ -51,15 +52,19 @@ class KraftsamlingAPI:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Navigating the response path: $Result.tokenUsers.authToken
-                    token_users = data.get("tokenUsers", {})
-                    self._token = token_users.get("authToken")
+                    
+                    # The response is a dict: {"tokenUsers": [{"name": "", "authToken": "..."}]}
+                    token_list = data.get("tokenUsers", [])
+                    
+                    if isinstance(token_list, list) and len(token_list) > 0:
+                        # Extract authToken from the first element in the list
+                        self._token = token_list[0].get("authToken")
                     
                     if self._token:
-                        _LOGGER.debug("Authentication successful, token received.")
+                        _LOGGER.debug("Authentication successful, authToken received.")
                         return True
                     
-                    _LOGGER.error("Auth response succeeded but 'tokenUsers.authToken' was missing.")
+                    _LOGGER.error("Auth response structure mismatch or missing token. Data: %s", data)
                 else:
                     _LOGGER.error("Authentication failed with status code: %s", response.status)
                 return False
@@ -75,7 +80,7 @@ class KraftsamlingAPI:
 
         url = f"{self.base_url}/Billingpoints"
         headers = self._default_headers.copy()
-        # Authorization header uses the raw token without 'Bearer' prefix
+        # Authorization header uses the raw token from the auth response
         headers["Authorization"] = self._token
 
         try:
@@ -83,7 +88,7 @@ class KraftsamlingAPI:
                 response.raise_for_status()
                 data = await response.json()
                 
-                # Extracting billing points from the response object
+                # Extracting billing points from the response object as seen in PS script
                 if isinstance(data, dict) and "billingPoints" in data:
                     return data["billingPoints"]
                 return data if isinstance(data, list) else []
@@ -94,7 +99,7 @@ class KraftsamlingAPI:
     async def async_get_volumes(self, billingpoints: List[str], start_date: str, end_date: str) -> List[Any]:
         """
         Fetch energy consumption volumes.
-        Dates should be provided in yyyy-MM-dd format.
+        Dates should be provided in yyyy-MM-dd format as used in the PowerShell script.
         """
         if not self._token:
             if not await self.async_authenticate():
@@ -104,7 +109,7 @@ class KraftsamlingAPI:
         headers = self._default_headers.copy()
         headers["Authorization"] = self._token
         
-        # Payload matches the ordered dictionary from the PowerShell script
+        # Payload matches the requirements for Dalakraft IO Volumes endpoint
         payload = {
             "billingpoints": billingpoints,
             "resolution": "hour",
