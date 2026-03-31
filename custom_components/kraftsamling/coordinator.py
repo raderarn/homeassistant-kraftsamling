@@ -32,7 +32,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
 
         for ext_id in selected_ids:
             try:
-                stat_id = f"{STATISTICS_ID_BASE}{ext_id}"
+                stat_id = f"{STATISTICS_ID_BASE}{ext_id}".lower().strip()
                 last_stats = await get_instance(self.hass).async_add_executor_job(
                     get_last_statistics, self.hass, 1, stat_id, True, {"sum"}
                 )
