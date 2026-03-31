@@ -1,7 +1,5 @@
 # Kraftsamling for Home Assistant
 
-<h1 align="center">Kraftsamling for Home Assistant</h1>
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo_white.png">
