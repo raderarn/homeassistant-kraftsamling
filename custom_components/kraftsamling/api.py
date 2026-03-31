@@ -14,7 +14,8 @@ class KraftsamlingAPI:
         self.customer_id = str(customer_id).strip()
         self.api_key = str(api_key).strip()
         self.session = session
-        self.base_url = "https://io.dalakraft.se/api/v1"
+        # KORRIGERAD: Ingen /api/v1 här, vi kör direkt på roten
+        self.base_url = "https://io.dalakraft.se"
 
     async def _make_request(self, method: str, url: str, json_payload=None) -> list | dict:
         """Make an async HTTP request to the API."""
@@ -45,6 +46,7 @@ class KraftsamlingAPI:
 
     async def get_facilities(self) -> list:
         """Fetch all billing points (facilities) for the customer."""
+        # URL blir: https://io.dalakraft.se/Billingpoints
         url = f"{self.base_url}/Billingpoints"
         data = await self._make_request("GET", url)
         
@@ -56,6 +58,7 @@ class KraftsamlingAPI:
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
         """Fetch hourly consumption volumes via POST request."""
+        # URL blir: https://io.dalakraft.se/Billingpoints/volumes
         url = f"{self.base_url}/Billingpoints/volumes"
         end_dt = datetime.now()
         
@@ -71,6 +74,7 @@ class KraftsamlingAPI:
             _LOGGER.debug("RAW API RESPONSE: %s", data)
             
             consumptions = []
+            # Hanterar list-strukturen: [ { 'consumptions': [...] } ]
             if isinstance(data, list) and len(data) > 0:
                 consumptions = data[0].get("consumptions", [])
             elif isinstance(data, dict):
@@ -81,6 +85,7 @@ class KraftsamlingAPI:
                 quantity = item.get("quantity")
                 start_time = item.get("periodStart")
                 if quantity is not None and start_time:
+                    # Hanterar tidsstämpel och ISO-format
                     ts_str = start_time.replace("Z", "+00:00")
                     results.append({
                         "timestamp": datetime.fromisoformat(ts_str),
