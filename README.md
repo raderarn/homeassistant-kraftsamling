@@ -34,10 +34,32 @@ An integration for Home Assistant that fetches electricity consumption data from
    * **Start Date**: The date you want to start importing data from (default is the first of the current month).
 4. In the next step, select the **Facilities** (Billing points) you want to track.
 
+## How to use the data
+
+Since this integration imports **Long-term Statistics** rather than creating real-time sensors, you will find the data in the following places:
+
+### 1. Energy Dashboard (Recommended)
+This is the best way to visualize your electricity consumption.
+1. Go to **Settings** -> **Dashboards** -> **Energy**.
+2. Click **Add consumption** under the *Electricity grid* section.
+3. Search for your facility, it will appear as `Kraftsamling [Installation Address] ([ID])`.
+4. **Note:** It can take up to **2 hours** after the first sync before the statistics are processed by Home Assistant and become visible in the list.
+
+### 2. Developer Tools
+To verify that data has been imported correctly:
+1. Go to **Developer Tools** -> **Statistics**.
+2. Search for `kraftsamling`.
+3. You should see your facilities listed there. If there is a button that says **Fix issue**, click it to see if there are any unit mismatches (though the integration handles this automatically).
+
+### 3. Statistics Graph Card
+You can also add a manual graph to any dashboard:
+1. Add a new **Statistics Graph** card to your Lovelace UI.
+2. Select your Kraftsamling entities.
+3. Change the period to "Day", "Week", or "Month" to see your historical Dalakraft data.
+
 ## Finding your Credentials
 To use this integration, you need access to the Dalakraft IO API. 
-1. Log in to your account at [Dalakraft IO](https://io.dalakraft.se/).
-2. You will find your **CustomerId** and **API-Key** under your profile or API settings.
+You need to contact customer services to retreive your key. 
 
 ## License
 This project is licensed under the MIT License.
