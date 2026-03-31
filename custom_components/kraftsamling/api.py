@@ -53,11 +53,10 @@ class KraftsamlingAPI:
                 if response.status == 200:
                     data = await response.json()
                     
-                    # The response is a dict: {"tokenUsers": [{"name": "", "authToken": "..."}]}
+                    # Structure: {"tokenUsers": [{"name": "", "authToken": "..."}]}
                     token_list = data.get("tokenUsers", [])
                     
                     if isinstance(token_list, list) and len(token_list) > 0:
-                        # Extract authToken from the first element in the list
                         self._token = token_list[0].get("authToken")
                     
                     if self._token:
@@ -80,7 +79,7 @@ class KraftsamlingAPI:
 
         url = f"{self.base_url}/Billingpoints"
         headers = self._default_headers.copy()
-        # Authorization header uses the raw token from the auth response
+        # Authorization header uses the raw token directly (no Bearer prefix)
         headers["Authorization"] = self._token
 
         try:
@@ -88,7 +87,7 @@ class KraftsamlingAPI:
                 response.raise_for_status()
                 data = await response.json()
                 
-                # Extracting billing points from the response object as seen in PS script
+                # Extract billing points based on your PowerShell script structure
                 if isinstance(data, dict) and "billingPoints" in data:
                     return data["billingPoints"]
                 return data if isinstance(data, list) else []
@@ -99,7 +98,7 @@ class KraftsamlingAPI:
     async def async_get_volumes(self, billingpoints: List[str], start_date: str, end_date: str) -> List[Any]:
         """
         Fetch energy consumption volumes.
-        Dates should be provided in yyyy-MM-dd format as used in the PowerShell script.
+        Dates are provided in yyyy-MM-dd format.
         """
         if not self._token:
             if not await self.async_authenticate():
@@ -109,7 +108,7 @@ class KraftsamlingAPI:
         headers = self._default_headers.copy()
         headers["Authorization"] = self._token
         
-        # Payload matches the requirements for Dalakraft IO Volumes endpoint
+        # Matches the payload requirements for Dalakraft IO Volumes
         payload = {
             "billingpoints": billingpoints,
             "resolution": "hour",
@@ -118,9 +117,20 @@ class KraftsamlingAPI:
         }
 
         try:
+            _LOGGER.debug("Requesting volumes for %s from %s to %s", billingpoints, start_date, end_date)
             async with self.session.post(url, json=payload, headers=headers, timeout=15) as response:
                 response.raise_for_status()
-                return await response.json()
+                data = await response.json()
+                
+                # Flexibility to handle if the data is wrapped in a key (e.g., 'values' or 'out')
+                if isinstance(data, dict):
+                    actual_list = data.get("values") or data.get("billingPoints") or data.get("out")
+                    if actual_list is not None:
+                        return actual_list
+                    _LOGGER.warning("API returned a dictionary but no known data key was found: %s", data.keys())
+                    return []
+                
+                return data if isinstance(data, list) else []
         except Exception as err:
             _LOGGER.error("Failed to fetch volume data: %s", err)
             return []
