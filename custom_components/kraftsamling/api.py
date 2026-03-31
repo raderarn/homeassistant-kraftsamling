@@ -14,7 +14,8 @@ class KraftsamlingAPI:
         self.customer_id = customer_id
         self.api_key = api_key
         self.session = session
-        self.base_url = "https://io.dalakraft.se/api/v1"
+        # ÄNDRAD: Bort med /api/v1
+        self.base_url = "https://io.dalakraft.se"
 
     async def _make_request(self, method: str, url: str, json_payload=None) -> list | dict:
         """Make an async HTTP request to the API."""
@@ -40,11 +41,12 @@ class KraftsamlingAPI:
             _LOGGER.error("Timeout while connecting to Dalakraft API")
             return []
         except Exception as err:
-            _LOGGER.error("Error connecting to Dalakraft API: %s", err)
+            _LOGGER.error("Error connecting to Dalakraft API (%s): %s", url, err)
             return []
 
     async def get_facilities(self) -> list:
         """Fetch all billing points (facilities) for the customer."""
+        # ÄNDRAD: Direkt under Billingpoints
         url = f"{self.base_url}/Billingpoints"
         data = await self._make_request("GET", url)
         
@@ -56,7 +58,7 @@ class KraftsamlingAPI:
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
         """Fetch hourly consumption volumes via POST request."""
-        # DENNA URL ÄR DEN SOM FUNGERAR ENLIGT DIN RAW DATA:
+        # ÄNDRAD: Exakt den URL som gav dig data tidigare
         url = f"{self.base_url}/Billingpoints/volumes"
         end_dt = datetime.now()
         
@@ -72,7 +74,7 @@ class KraftsamlingAPI:
             _LOGGER.debug("RAW API RESPONSE: %s", data)
             
             consumptions = []
-            # Hantera list-svaret som vi såg i din logg
+            # Hanterar att svaret är en lista: [ { 'consumptions': [...] } ]
             if isinstance(data, list) and len(data) > 0:
                 consumptions = data[0].get("consumptions", [])
             elif isinstance(data, dict):
@@ -82,6 +84,7 @@ class KraftsamlingAPI:
             for item in consumptions:
                 quantity = item.get("quantity")
                 if quantity is not None:
+                    # Hanterar tidsstämpel och tar bort Z om det finns
                     ts_str = item["periodStart"].replace("Z", "+00:00")
                     results.append({
                         "timestamp": datetime.fromisoformat(ts_str),
