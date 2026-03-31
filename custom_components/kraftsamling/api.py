@@ -18,6 +18,7 @@ class KraftsamlingAPI:
 
     async def _make_request(self, method: str, url: str, json_payload=None) -> list | dict:
         """Make an async HTTP request to the API."""
+        # Vi definierar headers EXAKT här för att vara säkra på att de skickas med
         headers = {
             "X-Customer-Id": self.customer_id,
             "X-Api-Key": self.api_key,
@@ -26,37 +27,44 @@ class KraftsamlingAPI:
         }
 
         try:
+            _LOGGER.debug("Sending %s request to %s", method, url)
             async with self.session.request(
-                method, url, headers=headers, json=json_payload, timeout=20
+                method, 
+                url, 
+                headers=headers, 
+                json=json_payload, 
+                timeout=20,
+                allow_redirects=True # Säkerställ att vi följer redirects om de finns
             ) as response:
+                
                 if response.status == 401:
-                    _LOGGER.error("Authentication failed (401) for URL: %s. Payload was: %s", url, json_payload)
+                    # Om det skiter sig loggar vi exakt vad som skickades (utan att röja hela nyckeln)
+                    _LOGGER.error(
+                        "Auth failed (401). URL: %s, CustomerID start: %s..., Key start: %s...", 
+                        url, self.customer_id[:4], self.api_key[:4]
+                    )
                     return []
                 
                 response.raise_for_status()
                 return await response.json()
 
+        except aiohttp.ClientResponseError as err:
+            _LOGGER.error("HTTP error %s for %s: %s", err.status, url, err.message)
+            return []
         except Exception as err:
-            _LOGGER.error("Error connecting to Dalakraft API (%s): %s", url, err)
+            _LOGGER.error("Unexpected error connecting to %s: %s", url, err)
             return []
 
     async def get_facilities(self) -> list:
-        """Fetch all billing points (facilities) for the customer."""
+        """Fetch all billing points (facilities)."""
         url = f"{self.base_url}/Billingpoints"
-        data = await self._make_request("GET", url)
-        
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("billingpoints", [])
-        return []
+        return await self._make_request("GET", url)
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
-        """Fetch hourly consumption volumes via POST request."""
+        """Fetch hourly consumption volumes."""
         url = f"{self.base_url}/Billingpoints/volumes"
         end_dt = datetime.now()
         
-        # SÄKERSTÄLL STRÄNG: Vi tvingar ID att vara sträng för att undvika 401
         payload = {
             "billingpoints": [str(external_id)],
             "resolution": "hour",
@@ -64,30 +72,24 @@ class KraftsamlingAPI:
             "periodEnd": end_dt.strftime("%Y-%m-%dT%H:%M:%S")
         }
 
-        try:
-            data = await self._make_request("POST", url, json_payload=payload)
-            _LOGGER.debug("RAW API RESPONSE: %s", data)
-            
-            consumptions = []
-            if isinstance(data, list) and len(data) > 0:
-                consumptions = data[0].get("consumptions", [])
-            elif isinstance(data, dict):
-                consumptions = data.get("consumptions", [])
+        data = await self._make_request("POST", url, json_payload=payload)
+        _LOGGER.debug("RAW API RESPONSE: %s", data)
+        
+        consumptions = []
+        if isinstance(data, list) and len(data) > 0:
+            consumptions = data[0].get("consumptions", [])
+        elif isinstance(data, dict):
+            consumptions = data.get("consumptions", [])
 
-            results = []
-            for item in consumptions:
-                quantity = item.get("quantity")
-                start_time = item.get("periodStart")
-                if quantity is not None and start_time:
-                    ts_str = start_time.replace("Z", "+00:00")
-                    results.append({
-                        "timestamp": datetime.fromisoformat(ts_str),
-                        "consumption": float(quantity)
-                    })
-            
-            _LOGGER.debug("Fetched %s consumption records for %s", len(results), external_id)
-            return results
-
-        except Exception as err:
-            _LOGGER.warning("Could not fetch volumes for %s: %s", external_id, err)
-            return []
+        results = []
+        for item in consumptions:
+            quantity = item.get("quantity")
+            start_time = item.get("periodStart")
+            if quantity is not None and start_time:
+                ts_str = start_time.replace("Z", "+00:00")
+                results.append({
+                    "timestamp": datetime.fromisoformat(ts_str),
+                    "consumption": float(quantity)
+                })
+        
+        return results
