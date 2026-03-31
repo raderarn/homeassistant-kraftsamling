@@ -22,6 +22,10 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         """Initial step to get credentials from user."""
         if user_input is not None:
+            # Set unique ID based on Customer ID to prevent duplicate integrations
+            await self.async_set_unique_id(user_input[CONF_USERNAME])
+            self._abort_if_unique_id_configured()
+            
             self._data = user_input
             return await self.async_step_select_facilities()
 
@@ -38,22 +42,21 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Step 2: Authenticate and let user select facilities."""
         session = async_get_clientsession(self.hass)
         
-        # FIXED: session MUST be the first argument to match KraftsamlingAPI.__init__
-        # In your previous code, username was sent first, causing the 'str' error.
+        # Correct argument order: session, username, password
         api = KraftsamlingAPI(
             session,
             self._data[CONF_USERNAME], 
             self._data[CONF_PASSWORD]
         )
         
-        # Attempt to fetch billing points (facilities)
+        # Fetch facilities (billing points) from the API
         facilities = await api.async_get_billingpoints()
         
         if not facilities:
-            _LOGGER.error("No facilities found or authentication failed for Dalakraft IO")
+            _LOGGER.error("No facilities found or authentication failed for customer %s", self._data[CONF_USERNAME])
             return self.async_abort(reason="no_facilities")
         
-        # Prepare the list of facilities for the UI selection
+        # Create a dictionary for the UI selection: externalId -> Address (externalId)
         facility_options = {
             f["externalId"]: f"{f.get('installationAddress', 'Unknown address')} ({f['externalId']})" 
             for f in facilities
@@ -88,14 +91,14 @@ class KraftsamlingOptionsFlowHandler(config_entries.OptionsFlow):
         self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
-        """Manage the options."""
+        """Manage the configuration options."""
         if user_input is not None:
-            # Update the existing config entry with new data
+            # Update config entry data with new values
             new_data = {**self.config_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
             return self.async_create_entry(title="", data={})
 
-        # Pre-fill the form with current values
+        # Pre-fill form with current values
         d = self.config_entry.data
         return self.async_show_form(
             step_id="init",
