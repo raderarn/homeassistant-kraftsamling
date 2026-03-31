@@ -14,7 +14,6 @@ class KraftsamlingAPI:
         self.customer_id = str(customer_id).strip()
         self.api_key = str(api_key).strip()
         self.session = session
-        # KORRIGERAD: Ingen /api/v1 här, vi kör direkt på roten
         self.base_url = "https://io.dalakraft.se"
 
     async def _make_request(self, method: str, url: str, json_payload=None) -> list | dict:
@@ -31,22 +30,18 @@ class KraftsamlingAPI:
                 method, url, headers=headers, json=json_payload, timeout=20
             ) as response:
                 if response.status == 401:
-                    _LOGGER.error("Authentication failed (401) for URL: %s", url)
+                    _LOGGER.error("Authentication failed (401) for URL: %s. Payload was: %s", url, json_payload)
                     return []
                 
                 response.raise_for_status()
                 return await response.json()
 
-        except asyncio.TimeoutError:
-            _LOGGER.error("Timeout while connecting to Dalakraft API")
-            return []
         except Exception as err:
             _LOGGER.error("Error connecting to Dalakraft API (%s): %s", url, err)
             return []
 
     async def get_facilities(self) -> list:
         """Fetch all billing points (facilities) for the customer."""
-        # URL blir: https://io.dalakraft.se/Billingpoints
         url = f"{self.base_url}/Billingpoints"
         data = await self._make_request("GET", url)
         
@@ -58,12 +53,12 @@ class KraftsamlingAPI:
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
         """Fetch hourly consumption volumes via POST request."""
-        # URL blir: https://io.dalakraft.se/Billingpoints/volumes
         url = f"{self.base_url}/Billingpoints/volumes"
         end_dt = datetime.now()
         
+        # SÄKERSTÄLL STRÄNG: Vi tvingar ID att vara sträng för att undvika 401
         payload = {
-            "billingpoints": [external_id],
+            "billingpoints": [str(external_id)],
             "resolution": "hour",
             "periodStart": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
             "periodEnd": end_dt.strftime("%Y-%m-%dT%H:%M:%S")
@@ -74,7 +69,6 @@ class KraftsamlingAPI:
             _LOGGER.debug("RAW API RESPONSE: %s", data)
             
             consumptions = []
-            # Hanterar list-strukturen: [ { 'consumptions': [...] } ]
             if isinstance(data, list) and len(data) > 0:
                 consumptions = data[0].get("consumptions", [])
             elif isinstance(data, dict):
@@ -85,7 +79,6 @@ class KraftsamlingAPI:
                 quantity = item.get("quantity")
                 start_time = item.get("periodStart")
                 if quantity is not None and start_time:
-                    # Hanterar tidsstämpel och ISO-format
                     ts_str = start_time.replace("Z", "+00:00")
                     results.append({
                         "timestamp": datetime.fromisoformat(ts_str),
