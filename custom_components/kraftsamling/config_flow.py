@@ -38,20 +38,24 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Step 2: Authenticate and let user select facilities."""
         session = async_get_clientsession(self.hass)
         
-        # Vi använder datan vi fick i steg 1
+        # FIXED: session MUST be the first argument to match KraftsamlingAPI.__init__
+        # In your previous code, username was sent first, causing the 'str' error.
         api = KraftsamlingAPI(
+            session,
             self._data[CONF_USERNAME], 
-            self._data[CONF_PASSWORD], 
-            session
+            self._data[CONF_PASSWORD]
         )
         
+        # Attempt to fetch billing points (facilities)
         facilities = await api.async_get_billingpoints()
+        
         if not facilities:
+            _LOGGER.error("No facilities found or authentication failed for Dalakraft IO")
             return self.async_abort(reason="no_facilities")
         
-        # Skapa lista för val i UI
+        # Prepare the list of facilities for the UI selection
         facility_options = {
-            f["externalId"]: f"{f.get('installationAddress', 'Okänd')} ({f['externalId']})" 
+            f["externalId"]: f"{f.get('installationAddress', 'Unknown address')} ({f['externalId']})" 
             for f in facilities
         }
 
@@ -86,12 +90,12 @@ class KraftsamlingOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage the options."""
         if user_input is not None:
-            # Uppdatera config entry data med nya värden
+            # Update the existing config entry with new data
             new_data = {**self.config_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
             return self.async_create_entry(title="", data={})
 
-        # Hämta nuvarande värden för förifyllnad
+        # Pre-fill the form with current values
         d = self.config_entry.data
         return self.async_show_form(
             step_id="init",
