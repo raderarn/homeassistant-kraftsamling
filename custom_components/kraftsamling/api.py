@@ -54,37 +54,43 @@ class KraftsamlingAPI:
             return []
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
-        """Fetch hourly consumption volumes via POST request."""
-        url = f"{self.base_url}/Billingpoints/volumes"
-        end_dt = datetime.now()
-        
-        payload = {
-            "billingpoints": [external_id],
-            "resolution": "hour",
-            "periodStart": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
-            "periodEnd": end_dt.strftime("%Y-%m-%dT%H:%M:%S")
-        }
-
-        try:
-            data = await self._make_request("POST", url, json_payload=payload)
+            """Fetch hourly consumption volumes via POST request."""
+            url = f"{self.base_url}/Billingpoints/volumes"
+            end_dt = datetime.now()
             
-            consumptions = data.get("consumptions", [])
-            results = []
+            payload = {
+                "billingpoints": [external_id],
+                "resolution": "hour",
+                "periodStart": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+                "periodEnd": end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+            }
+    
+            try:
+                # data will now be the raw list returned from the API
+                data = await self._make_request("POST", url, json_payload=payload)
+                
+                # The API returns a list of consumption objects directly
+                # If it's already a list, we use it. If not, we try to get 'consumptions'
+                consumptions = data if isinstance(data, list) else data.get("consumptions", [])
+                
+                results = []
+                for item in consumptions:
+                    quantity = item.get("quantity")
+                    if quantity is not None:
+                        # Parse timestamp and ensure it is timezone aware
+                        ts_str = item["periodStart"].replace("Z", "+00:00")
+                        results.append({
+                            "timestamp": datetime.fromisoformat(ts_str),
+                            "consumption": float(quantity)
+                        })
+                
+                _LOGGER.debug("Fetched %s consumption records for %s", len(results), external_id)
+                return results
+    
+            except Exception as err:
+                _LOGGER.warning("Could not fetch volumes for %s: %s", external_id, err)
+                return []
             
-            for item in consumptions:
-                quantity = item.get("quantity")
-                if quantity is not None:
-                    # Parse timestamp and ensure it is timezone aware
-                    ts_str = item["periodStart"].replace("Z", "+00:00")
-                    results.append({
-                        "timestamp": datetime.fromisoformat(ts_str),
-                        "consumption": float(quantity)
-                    })
-            return results
-        except Exception as err:
-            _LOGGER.warning("Could not fetch volumes for %s: %s", external_id, err)
-            return []
-
     async def _make_request(self, method, url, json_payload=None):
         """Make an async HTTP request with automatic token retry on 401."""
         if not self._token:
