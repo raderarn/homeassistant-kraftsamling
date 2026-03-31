@@ -66,18 +66,22 @@ class KraftsamlingAPI:
             }
     
             try:
-                # data will now be the raw list returned from the API
                 data = await self._make_request("POST", url, json_payload=payload)
-                _LOGGER.debug("RAW API RESPONSE: %s", data)
-                # The API returns a list of consumption objects directly
-                # If it's already a list, we use it. If not, we try to get 'consumptions'
-                consumptions = data if isinstance(data, list) else data.get("consumptions", [])
                 
+                # NY LOGIK HÄR:
+                # Data är en lista. Vi tar första elementet i listan ([0]) 
+                # och hämtar sedan 'consumptions' från det objektet.
+                consumptions = []
+                if isinstance(data, list) and len(data) > 0:
+                    consumptions = data[0].get("consumptions", [])
+                elif isinstance(data, dict):
+                    consumptions = data.get("consumptions", [])
+    
                 results = []
                 for item in consumptions:
                     quantity = item.get("quantity")
                     if quantity is not None:
-                        # Parse timestamp and ensure it is timezone aware
+                        # Hantera tidsstämpel
                         ts_str = item["periodStart"].replace("Z", "+00:00")
                         results.append({
                             "timestamp": datetime.fromisoformat(ts_str),
@@ -86,7 +90,10 @@ class KraftsamlingAPI:
                 
                 _LOGGER.debug("Fetched %s consumption records for %s", len(results), external_id)
                 return results
-    
+
+        except Exception as err:
+            _LOGGER.warning("Could not fetch volumes for %s: %s", external_id, err)
+            return []    
             except Exception as err:
                 _LOGGER.warning("Could not fetch volumes for %s: %s", external_id, err)
                 return []
