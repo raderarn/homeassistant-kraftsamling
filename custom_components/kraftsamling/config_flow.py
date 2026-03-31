@@ -45,7 +45,7 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             session
         )
         
-        facilities = await api.get_facilities()
+        facilities = await api.async_get_billingpoints()
         if not facilities:
             return self.async_abort(reason="no_facilities")
         
