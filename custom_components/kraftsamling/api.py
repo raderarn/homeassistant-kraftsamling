@@ -1,45 +1,50 @@
 """Dalakraft IO API Client."""
 import logging
-import asyncio
 import aiohttp
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 _LOGGER = logging.getLogger(__name__)
 
 class KraftsamlingAPI:
     """Class to communicate with the Dalakraft IO API."""
 
-    def __init__(self, session: aiohttp.ClientSession, customer_id: str, api_key: str):
-        """Initialize the API client."""
+    def __init__(self, session: aiohttp.ClientSession, username: str, password: str):
+        """
+        Initialize the API client.
+        
+        :param username: This is the Customer ID from Home Assistant config
+        :param password: This is the API Key from Home Assistant config
+        """
         self.session = session
-        self.customer_id = str(customer_id)
-        self.api_key = api_key
+        self.username = str(username)
+        self.password = password
         self.base_url = "https://io.dalakraft.se"
         self._token: Optional[str] = None
 
     @property
     def _default_headers(self) -> dict:
-        """Standard headers required for all requests."""
+        """Standard headers required for all requests to Dalakraft IO."""
         return {
-            "X-Customer-Id": self.customer_id,
-            "X-Api-Key": self.api_key,
+            "X-Customer-Id": self.username,
+            "X-Api-Key": self.password,
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
 
     async def async_authenticate(self) -> bool:
-        """Fetch a Bearer token from the /auth endpoint."""
+        """
+        Fetch a Bearer token from the /auth endpoint.
+        Returns True if successful, otherwise False.
+        """
         url = f"{self.base_url}/auth"
-        
-        # Payload according to Dalakraft IO standards
         payload = {
-            "customerid": self.customer_id,
-            "apikey": self.api_key
+            "customerid": self.username,
+            "apikey": self.password
         }
 
         try:
-            _LOGGER.debug("Attempting authentication against %s", url)
+            _LOGGER.debug("Authenticating to %s", url)
             async with self.session.post(
                 url, 
                 json=payload, 
@@ -48,63 +53,58 @@ class KraftsamlingAPI:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Extract token from the JSON response
                     self._token = data.get("token")
-                    
                     if self._token:
-                        _LOGGER.debug("Authentication successful, token received.")
                         return True
-                    
-                    _LOGGER.error("Auth response missing 'token' field: %s", data)
-                    return False
-                
-                _LOGGER.error("Authentication failed with status %s", response.status)
+                    _LOGGER.error("Auth response missing 'token' field")
+                else:
+                    _LOGGER.error("Authentication failed with status %s", response.status)
                 return False
-
-        except Exception as e:
-            _LOGGER.error("Unexpected error during authentication: %s", e)
+        except Exception as err:
+            _LOGGER.error("Error during authentication: %s", err)
             return False
 
-    async def _get_authenticated_headers(self) -> dict:
-        """Get headers including the Authorization token."""
+    async def async_get_billingpoints(self) -> List[Any]:
+        """
+        Fetch billing points. 
+        Returns a list of facilities or an empty list if it fails.
+        """
+        # Ensure we have a token
         if not self._token:
-            await self.async_authenticate()
-            
-        headers = self._default_headers.copy()
-        if self._token:
-            headers["Authorization"] = f"Bearer {self._token}"
-        return headers
+            if not await self.async_authenticate():
+                return []
 
-    async def async_get_billingpoints(self) -> list:
-        """Fetch the list of billing points (facilities)."""
         url = f"{self.base_url}/Billingpoints"
-        headers = await self._get_authenticated_headers()
+        headers = self._default_headers.copy()
+        headers["Authorization"] = f"Bearer {self._token}"
 
         try:
             async with self.session.get(url, headers=headers, timeout=10) as response:
                 if response.status == 401:
-                    _LOGGER.warning("Token invalid (401), attempting to refresh...")
-                    self._token = None # Clear expired token
-                    headers = await self._get_authenticated_headers()
-                    # Retry once with a new token
-                    async with self.session.get(url, headers=headers) as retry_resp:
-                        retry_resp.raise_for_status()
-                        return await retry_resp.json()
-
+                    _LOGGER.warning("Token expired, retrying once...")
+                    self._token = None
+                    # Recursive call once after clearing token
+                    return await self.async_get_billingpoints()
+                
                 response.raise_for_status()
                 return await response.json()
-
-        except Exception as e:
-            _LOGGER.error("Error fetching billingpoints: %s", e)
+        except Exception as err:
+            _LOGGER.error("Failed to fetch billing points: %s", err)
             return []
 
-    async def async_get_volumes(self, billingpoints: list, start_date: str, end_date: str) -> list:
-        """Fetch consumption data (volumes)."""
+    async def async_get_volumes(self, billingpoints: List[str], start_date: str, end_date: str) -> List[Any]:
+        """
+        Fetch energy consumption volumes.
+        Dates must be ISO strings without 'Z' (e.g. 2024-01-01T00:00:00).
+        """
+        if not self._token:
+            if not await self.async_authenticate():
+                return []
+
         url = f"{self.base_url}/Billingpoints/volumes"
-        headers = await self._get_authenticated_headers()
+        headers = self._default_headers.copy()
+        headers["Authorization"] = f"Bearer {self._token}"
         
-        # Payload format: billingpoints as a list of strings
-        # Dates should be ISO strings without 'Z', e.g., 2024-01-01T00:00:00
         payload = {
             "billingpoints": billingpoints,
             "from": start_date,
@@ -115,6 +115,6 @@ class KraftsamlingAPI:
             async with self.session.post(url, json=payload, headers=headers, timeout=15) as response:
                 response.raise_for_status()
                 return await response.json()
-        except Exception as e:
-            _LOGGER.error("Error fetching volume data: %s", e)
+        except Exception as err:
+            _LOGGER.error("Failed to fetch volume data: %s", err)
             return []
