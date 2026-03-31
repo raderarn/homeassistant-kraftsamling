@@ -1,7 +1,7 @@
 # Kraftsamling for Home Assistant
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/logo.png" width="200" alt="Dalakraft Logo">
+  <img src="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo.png" width="200" alt="Dalakraft Logo">
 </p>
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
@@ -23,11 +23,6 @@ An integration for Home Assistant that fetches electricity consumption data from
 3. Add `https://github.com/raderarn/homeassistant-kraftsamling` as an **Integration**.
 4. Click **Install**.
 5. Restart Home Assistant.
-
-### Manual Installation
-1. Download the `custom_components/kraftsamling` folder.
-2. Copy it into your Home Assistant `/config/custom_components/` directory.
-3. Restart Home Assistant.
 
 ## Configuration
 
