@@ -45,10 +45,9 @@ class KraftsamlingAPI:
 
     async def get_facilities(self) -> list:
         """Fetch all billing points (facilities) for the customer."""
-        url = f"{self.base_url}/Billingpoints/volumes"
+        url = f"{self.base_url}/Billingpoints"
         data = await self._make_request("GET", url)
         
-        # API returns a list directly or inside an object
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
@@ -57,7 +56,8 @@ class KraftsamlingAPI:
 
     async def get_consumption_data(self, external_id: str, start_dt: datetime) -> list:
         """Fetch hourly consumption volumes via POST request."""
-        url = f"{self.base_url}/volumes"
+        # DENNA URL ÄR DEN SOM FUNGERAR ENLIGT DIN RAW DATA:
+        url = f"{self.base_url}/Billingpoints/volumes"
         end_dt = datetime.now()
         
         payload = {
@@ -72,7 +72,7 @@ class KraftsamlingAPI:
             _LOGGER.debug("RAW API RESPONSE: %s", data)
             
             consumptions = []
-            # Based on your trace: data is a list containing a dict with 'consumptions'
+            # Hantera list-svaret som vi såg i din logg
             if isinstance(data, list) and len(data) > 0:
                 consumptions = data[0].get("consumptions", [])
             elif isinstance(data, dict):
@@ -82,7 +82,6 @@ class KraftsamlingAPI:
             for item in consumptions:
                 quantity = item.get("quantity")
                 if quantity is not None:
-                    # Clean up timestamp and handle 'Z' suffix for Python 3.11+
                     ts_str = item["periodStart"].replace("Z", "+00:00")
                     results.append({
                         "timestamp": datetime.fromisoformat(ts_str),
