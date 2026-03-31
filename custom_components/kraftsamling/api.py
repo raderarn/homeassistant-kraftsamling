@@ -45,7 +45,7 @@ class KraftsamlingAPI:
 
     async def get_facilities(self) -> list:
         """Fetch all billing points (facilities) for the customer."""
-        url = f"{self.base_url}/Billingpoints"
+        url = f"{self.base_url}/Billingpoints/volumes"
         data = await self._make_request("GET", url)
         
         # API returns a list directly or inside an object
