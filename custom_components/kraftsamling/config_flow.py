@@ -20,12 +20,10 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._data = {}
 
     async def async_step_user(self, user_input=None):
-        """Initial step to get credentials from user."""
+        """Initial step to get credentials."""
         if user_input is not None:
-            # Prevent duplicate entries using unique ID
             await self.async_set_unique_id(user_input[CONF_USERNAME])
             self._abort_if_unique_id_configured()
-            
             self._data = user_input
             return await self.async_step_select_facilities()
 
@@ -39,20 +37,12 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_select_facilities(self, user_input=None):
-        """Step 2: Authenticate and select billing points."""
+        """Step 2: Select billing points."""
         session = async_get_clientsession(self.hass)
-        
-        # Correct order: session, username, password
-        api = KraftsamlingAPI(
-            session,
-            self._data[CONF_USERNAME], 
-            self._data[CONF_PASSWORD]
-        )
-        
+        api = KraftsamlingAPI(session, self._data[CONF_USERNAME], self._data[CONF_PASSWORD])
         facilities = await api.async_get_billingpoints()
         
         if not facilities:
-            _LOGGER.error("No facilities found for user %s", self._data[CONF_USERNAME])
             return self.async_abort(reason="no_facilities")
         
         facility_options = {
@@ -77,17 +67,21 @@ class KraftsamlingConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        """Get the options flow for this handler."""
+        """Get the options flow."""
         return KraftsamlingOptionsFlowHandler(config_entry)
 
 
 class KraftsamlingOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow to update credentials via the cogwheel."""
+    """Handle options flow (Cogwheel)."""
 
-    # Note: No __init__ here to avoid AttributeError in newer HA versions.
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow without setting protected properties."""
+        # Vi sparar inte config_entry här för att undvika AttributeError, 
+        # den finns redan tillgänglig via bas-klassen i HA.
+        pass
 
     async def async_step_init(self, user_input=None):
-        """Manage the configuration options (Fixes 500 Error)."""
+        """Manage the options."""
         if user_input is not None:
             new_data = {**self.config_entry.data, **user_input}
             self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
