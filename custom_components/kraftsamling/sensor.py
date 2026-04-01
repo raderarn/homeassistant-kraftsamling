@@ -1,11 +1,6 @@
 """Sensor platform for Kraftsamling."""
 from __future__ import annotations
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
-from homeassistant.const import UnitOfEnergy
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
@@ -27,22 +22,21 @@ class KraftsamlingEnergySensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self._ext_id = ext_id
         self._attr_unique_id = f"{DOMAIN}_{ext_id}_energy"
+        # The entity_id will be sensor.kraftsamling_energy_...
         self.entity_id = f"sensor.kraftsamling_energy_{ext_id}"
         self._attr_name = f"Kraftsamling Energy {ext_id}"
         
-        # Mandatory attributes to make the sensor selectable in the Energy Dashboard.
-        self._attr_device_class = SensorDeviceClass.ENERGY
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-        
-        # We use TOTAL_INCREASING so Home Assistant accepts it as a valid energy source.
-        # Since the value returned is only the last hour's consumption (not the grand total),
-        # there will be no massive spikes in the dashboard.
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        # FIX: Remove device_class, state_class, and unit.
+        # This decouples the sensor from the Energy Dashboard and 
+        # the automatic statistics engine.
+        self._attr_device_class = None
+        self._attr_state_class = None
+        self._attr_native_unit_of_measurement = "kWh"
 
     @property
     def native_value(self) -> float | None:
         """Return the last hour value from the coordinator."""
-        # This returns the single hour value (e.g., 1.2) from the coordinator's data.
+        # This returns the value from the coordinator's return statement (last_hour_consumption)
         if isinstance(self.coordinator.data, (int, float)) and not isinstance(self.coordinator.data, bool):
             return self.coordinator.data
         return None
