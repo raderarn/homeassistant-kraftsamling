@@ -1,6 +1,11 @@
 """Sensor platform for Kraftsamling."""
 from __future__ import annotations
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
@@ -25,19 +30,19 @@ class KraftsamlingEnergySensor(CoordinatorEntity, SensorEntity):
         self.entity_id = f"sensor.kraftsamling_energy_{ext_id}"
         self._attr_name = f"Kraftsamling Energy {ext_id}"
         
-        # We set state_class to MEASUREMENT to satisfy Home Assistant's 
-        # statistics engine while avoiding Energy Dashboard spikes.
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        # Mandatory attributes to make the sensor selectable in the Energy Dashboard.
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         
-        # We keep device_class as None to prevent the Energy Dashboard from 
-        # using the live sensor value for its automatic calculations.
-        self._attr_device_class = None
-        self._attr_native_unit_of_measurement = "kWh"
+        # We use TOTAL_INCREASING so Home Assistant accepts it as a valid energy source.
+        # Since the value returned is only the last hour's consumption (not the grand total),
+        # there will be no massive spikes in the dashboard.
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     @property
     def native_value(self) -> float | None:
         """Return the last hour value from the coordinator."""
-        # This returns the value from the coordinator's return statement (last_hour_consumption)
+        # This returns the single hour value (e.g., 1.2) from the coordinator's data.
         if isinstance(self.coordinator.data, (int, float)) and not isinstance(self.coordinator.data, bool):
             return self.coordinator.data
         return None
