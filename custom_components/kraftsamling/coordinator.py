@@ -34,10 +34,12 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
         for ext_id in selected_ids:
             try:
                 stat_id = f"{STATISTICS_ID_BASE}{ext_id}".lower().strip()
+
                 last_stats = await get_instance(self.hass).async_add_executor_job(
                     get_last_statistics, self.hass, 1, stat_id, True, {"sum"}
                 )
 
+                # Sätt fetch_cursor och last_sum
                 if not last_stats or stat_id not in last_stats:
                     fetch_cursor = self.start_date
                     last_sum = 0.0
@@ -54,7 +56,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                     response_data = await self.api.async_get_volumes(
                         [ext_id], fetch_cursor.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d")
                     )
-                    
+
                     new_entries = []
                     if isinstance(response_data, list) and len(response_data) > 0:
                         new_entries = response_data[0].get("consumptions", [])
@@ -65,6 +67,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                     stats_to_import = []
                     for entry in new_entries:
                         try:
+                            # Gör ts timezone-aware
                             ts = datetime.fromisoformat(entry["periodStart"].replace("Z", "+00:00"))
                             val = float(entry["quantity"])
                             if ts >= fetch_cursor:
@@ -86,9 +89,11 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             unit_of_measurement="kWh",
                         )
                         async_import_statistics(self.hass, metadata, stats_to_import)
+                        # Uppdatera fetch_cursor korrekt med timezone-aware datetime
                         fetch_cursor = stats_to_import[-1].start + timedelta(hours=1)
                     else:
                         break
             except Exception as err:
                 _LOGGER.error("Update failed for %s: %s", ext_id, err)
+
         return True
