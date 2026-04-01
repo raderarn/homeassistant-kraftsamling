@@ -18,25 +18,22 @@ class KraftsamlingEnergySensor(CoordinatorEntity, SensorEntity):
     """Representation of a Kraftsamling sensor showing last hour consumption."""
 
     def __init__(self, coordinator, ext_id):
-        """Initialize the sensor."""
         super().__init__(coordinator)
         self._ext_id = ext_id
         self._attr_unique_id = f"{DOMAIN}_{ext_id}_energy"
-        # The entity_id will be sensor.kraftsamling_energy_...
         self.entity_id = f"sensor.kraftsamling_energy_{ext_id}"
         self._attr_name = f"Kraftsamling Energy {ext_id}"
-        
-        # FIX: Remove device_class, state_class, and unit.
-        # This decouples the sensor from the Energy Dashboard and 
-        # the automatic statistics engine.
+
         self._attr_device_class = None
         self._attr_state_class = None
         self._attr_native_unit_of_measurement = "kWh"
 
+        # ✅ KEEP-ALIVE: cache senaste värdet
+        self._last_value: float | None = None
+
     @property
     def native_value(self) -> float | None:
-        """Return the last hour value from the coordinator."""
-        # This returns the value from the coordinator's return statement (last_hour_consumption)
+        """Return the last known hour value (keep-alive)."""
         if isinstance(self.coordinator.data, (int, float)) and not isinstance(self.coordinator.data, bool):
-            return self.coordinator.data
-        return None
+            self._last_value = self.coordinator.data
+        return self._last_value
