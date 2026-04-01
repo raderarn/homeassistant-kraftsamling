@@ -1,11 +1,6 @@
 # Kraftsamling for Home Assistant
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo_white.png">
-    <img alt="Dalakraft" src="https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo.png" width="250">
-  </picture>
-</p>
+![Dalakraft](https://raw.githubusercontent.com/raderarn/homeassistant-kraftsamling/main/logo.png)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 ![Version](https://img.shields.io/github/v/release/raderarn/homeassistant-kraftsamling)
