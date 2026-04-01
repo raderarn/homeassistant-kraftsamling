@@ -79,12 +79,12 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             has_mean=False,
                             has_sum=True,
                             name=f"Kraftsamling {ext_id}",
-                            source=DOMAIN, # MUST be "kraftsamling"
+                            source="sensor"
                             statistic_id=stat_id,
                             unit_of_measurement="kWh",
                         )
                         async_import_statistics(self.hass, metadata, stats_to_import)
-                        fetch_cursor = stats_to_import[-1]["start"] + timedelta(hours=1)
+                        fetch_cursor = stats_to_import[-1][start] + timedelta(hours=1)
                     else:
                         break
             except Exception as err:
