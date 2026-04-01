@@ -1,6 +1,6 @@
 """Data update coordinator for Kraftsamling."""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.statistics import (
@@ -64,7 +64,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                     stats_to_import = []
                     for entry in new_entries:
                         try:
-                            ts = datetime.fromisoformat(entry["periodStart"].replace("Z", ""))
+                            ts = datetime.fromisoformat(entry["periodStart"].replace("Z", "+00:00"))
                             val = float(entry["quantity"])
                             if ts >= fetch_cursor:
                                 current_sum += val
