@@ -22,7 +22,8 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
         self.api = api
         self.config_entry = config_entry
         start_str = config_entry.data.get("start_date", "2024-01-01")
-        self.start_date = datetime.strptime(start_str, "%Y-%m-%d")
+        # Gör start_date timezone-aware
+        self.start_date = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
     async def _async_update_data(self):
         """Fetch and sync statistics."""
@@ -42,10 +43,10 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                     last_sum = 0.0
                 else:
                     last_stat_time = last_stats[stat_id][0]["start"]
-                    fetch_cursor = datetime.fromtimestamp(last_stat_time) + timedelta(hours=1)
+                    fetch_cursor = datetime.fromtimestamp(last_stat_time, tz=timezone.utc) + timedelta(hours=1)
                     last_sum = last_stats[stat_id][0]["sum"]
 
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
                 current_sum = last_sum
 
                 while fetch_cursor < now - timedelta(hours=1):
@@ -71,7 +72,8 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                                 stats_to_import.append(
                                     StatisticData(start=ts, sum=current_sum, state=current_sum)
                                 )
-                        except:
+                        except Exception as e:
+                            _LOGGER.warning("Failed to parse entry %s: %s", entry, e)
                             continue
 
                     if stats_to_import:
