@@ -79,7 +79,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             has_mean=False,
                             has_sum=True,
                             name=f"Kraftsamling {ext_id}",
-                            source="sensor",
+                            source="recorder",
                             statistic_id=stat_id,
                             unit_of_measurement="kWh",
                         )
