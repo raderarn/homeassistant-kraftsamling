@@ -55,9 +55,8 @@ class KraftsamlingEnergySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return the state of the sensor."""
-        # Check if coordinator data is a number. 
-        # If it's a boolean (True/False) from the return statement, return None.
-        if isinstance(self.coordinator.data, (int, float)) and not isinstance(self.coordinator.data, bool):
-            return self.coordinator.data
+        """Return the last known sum from the coordinator."""
+        # Vi letar i coordinatorns interna minne efter det senaste sum-värdet
+        if hasattr(self.coordinator, "last_sum"):
+            return self.coordinator.last_sum
         return None
