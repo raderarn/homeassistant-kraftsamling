@@ -22,6 +22,9 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
         self.api = api
         self.config_entry = config_entry
         
+        # Latest sum stored to be accessible by the sensor entity
+        self.last_sum = 0.0
+        
         # Parse start date and ensure it is timezone-aware (UTC)
         start_str = config_entry.data.get("start_date", "2024-01-01")
         self.start_date = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -44,15 +47,15 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
 
                 if not last_stats or stat_id not in last_stats:
                     fetch_cursor = self.start_date
-                    last_sum = 0.0
+                    self.last_sum = 0.0
                 else:
                     # Ensure the cursor is timezone-aware to allow comparison
                     last_stat_time = last_stats[stat_id][0]["start"]
                     fetch_cursor = datetime.fromtimestamp(last_stat_time, tz=timezone.utc) + timedelta(hours=1)
-                    last_sum = last_stats[stat_id][0]["sum"]
+                    self.last_sum = last_stats[stat_id][0]["sum"]
 
                 now = datetime.now(timezone.utc)
-                current_sum = last_sum
+                current_sum = self.last_sum
 
                 # Process data in 30-day chunks to catch up to the current date
                 while fetch_cursor < now - timedelta(hours=1):
@@ -84,7 +87,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
 
                             val = float(entry["quantity"])
                             
-                            # Comparison now works as both objects are timezone-aware
+                            # Only add to list if the timestamp is newer than our last record
                             if ts >= fetch_cursor:
                                 current_sum += val
                                 stats_to_import.append(
@@ -107,10 +110,11 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                         
                         _LOGGER.info("Importing %s hours of data for %s", len(stats_to_import), ext_id)
                         
-                        # Import statistics
+                        # Import statistics into the database
                         async_import_statistics(self.hass, metadata, stats_to_import)
                         
-                        # Move the cursor using dict-style access for the start time
+                        # Update local state and move cursor
+                        self.last_sum = current_sum
                         fetch_cursor = stats_to_import[-1]["start"] + timedelta(hours=1)
                     else:
                         break
@@ -118,4 +122,5 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.error("Update failed for %s: %s", ext_id, err)
 
-        return True
+        # Return the last sum so the sensor can display it as its state
+        return self.last_sum
