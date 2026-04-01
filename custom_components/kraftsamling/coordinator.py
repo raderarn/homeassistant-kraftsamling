@@ -22,10 +22,10 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
         self.api = api
         self.config_entry = config_entry
         
-        # Latest sum stored to be accessible by the sensor entity
+        # Vi lagrar både totalsumman (för kalkylen) och senaste timmen (för display)
         self.last_sum = 0.0
+        self.last_hour_consumption = 0.0
         
-        # Parse start date and ensure it is timezone-aware (UTC)
         start_str = config_entry.data.get("start_date", "2024-01-01")
         self.start_date = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
@@ -37,10 +37,8 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
 
         for ext_id in selected_ids:
             try:
-                # Format the statistic_id to be lowercase and stripped of whitespace
                 stat_id = f"{STATISTICS_ID_BASE}{ext_id}".lower().strip()
 
-                # Get the last imported statistic to determine the starting point
                 last_stats = await get_instance(self.hass).async_add_executor_job(
                     get_last_statistics, self.hass, 1, stat_id, True, {"sum"}
                 )
@@ -49,7 +47,6 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                     fetch_cursor = self.start_date
                     self.last_sum = 0.0
                 else:
-                    # Ensure the cursor is timezone-aware to allow comparison
                     last_stat_time = last_stats[stat_id][0]["start"]
                     fetch_cursor = datetime.fromtimestamp(last_stat_time, tz=timezone.utc) + timedelta(hours=1)
                     self.last_sum = last_stats[stat_id][0]["sum"]
@@ -57,7 +54,6 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                 now = datetime.now(timezone.utc)
                 current_sum = self.last_sum
 
-                # Process data in 30-day chunks to catch up to the current date
                 while fetch_cursor < now - timedelta(hours=1):
                     chunk_end = min(fetch_cursor + timedelta(days=30), now)
                     
@@ -75,26 +71,26 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                     stats_to_import = []
                     for entry in new_entries:
                         try:
-                            # Handle different timestamp formats (aware/naive)
                             raw_ts = entry["periodStart"]
                             if raw_ts.endswith("Z"):
                                 ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
                             elif "+" not in raw_ts:
-                                # Force UTC if the API provides a naive datetime string
                                 ts = datetime.fromisoformat(raw_ts).replace(tzinfo=timezone.utc)
                             else:
                                 ts = datetime.fromisoformat(raw_ts)
 
                             val = float(entry["quantity"])
                             
-                            # Only add to list if the timestamp is newer than our last record
                             if ts >= fetch_cursor:
                                 current_sum += val
                                 stats_to_import.append(
                                     StatisticData(start=ts, sum=current_sum, state=current_sum)
                                 )
+                                # Spara det senaste värdet för att visa i sensorn
+                                self.last_hour_consumption = val
+                                
                         except Exception as e:
-                            _LOGGER.warning("Failed to parse entry %s: %s", entry, e)
+                            _LOGGER.warning("Failed to parse entry: %s", e)
                             continue
 
                     if stats_to_import:
@@ -107,13 +103,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             unit_of_measurement="kWh",
                             mean_type=None,
                         )
-                        
-                        _LOGGER.info("Importing %s hours of data for %s", len(stats_to_import), ext_id)
-                        
-                        # Import statistics into the database
                         async_import_statistics(self.hass, metadata, stats_to_import)
-                        
-                        # Update local state and move cursor
                         self.last_sum = current_sum
                         fetch_cursor = stats_to_import[-1]["start"] + timedelta(hours=1)
                     else:
@@ -122,5 +112,5 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.error("Update failed for %s: %s", ext_id, err)
 
-        # Return the last sum so the sensor can display it as its state
-        return self.last_sum
+        # Vi returnerar senaste timmens förbrukning istället för totalsumman
+        return self.last_hour_consumption
