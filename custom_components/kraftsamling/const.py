@@ -8,4 +8,4 @@ CONF_PASSWORD = "password"
 CONF_START_DATE = "start_date"
 
 # Base ID for long-term statistics.
-STATISTICS_ID_BASE = "kraftsamling:energy_"
+STATISTICS_ID_BASE = "sensor.kraftsamling_energy_"
