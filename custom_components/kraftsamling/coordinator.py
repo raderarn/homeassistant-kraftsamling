@@ -101,7 +101,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             source="recorder",
                             statistic_id=stat_id,
                             unit_of_measurement="kWh",
-                            mean_type=None,
+                            mean_type=0,
                             unit_class="energy",
                         )
                         async_import_statistics(self.hass, metadata, stats_to_import)
