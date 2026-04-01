@@ -10,6 +10,9 @@ from .coordinator import KraftsamlingCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# List platforms to be loaded (in this case, only sensor)
+PLATFORMS: list[str] = ["sensor"]
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Kraftsamling from a config entry."""
     
@@ -19,8 +22,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Use Home Assistant's shared aiohttp session
     session = async_get_clientsession(hass)
     
-    # CORRECTED: Order must be session, username, password 
-    # to match KraftsamlingAPI.__init__
+    # Initialize the API client
     api = KraftsamlingAPI(
         session,
         entry.data.get(CONF_USERNAME), 
@@ -30,12 +32,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initialize the coordinator which manages data fetching
     coordinator = KraftsamlingCoordinator(hass, api, entry)
     
-    # Store the coordinator in hass.data for access from other platforms (e.g. sensor)
+    # Store the coordinator in hass.data for access from other platforms
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     # Perform the first data refresh immediately during startup
     await coordinator.async_config_entry_first_refresh()
+    
+    # NEW: Forward the setup to the sensor platform
+    # This triggers sensor.py and creates the actual entities
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     
     return True
 
@@ -45,6 +51,11 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload the integration and clean up."""
-    if entry.entry_id in hass.data[DOMAIN]:
-        hass.data[DOMAIN].pop(entry.entry_id)
-    return True
+    # NEW: Unload platforms (sensors) when the integration is removed/disabled
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    
+    if unload_ok:
+        if entry.entry_id in hass.data[DOMAIN]:
+            hass.data[DOMAIN].pop(entry.entry_id)
+            
+    return unload_ok
