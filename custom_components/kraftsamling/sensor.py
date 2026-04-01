@@ -1,4 +1,4 @@
-"""Sensor platform for Kraftsamling."""
+g"""Sensor platform for Kraftsamling."""
 from __future__ import annotations
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
@@ -23,7 +23,7 @@ class KraftsamlingEnergySensor(CoordinatorEntity, SensorEntity):
         self._ext_id = ext_id
         self._attr_unique_id = f"{DOMAIN}_{ext_id}_energy"
         self.entity_id = f"sensor.kraftsamling_energy_{ext_id}"
-        self._attr_name = f"Kraftsamling Senaste Timme {ext_id}"
+        self._attr_name = f"Kraftsamling Energy {ext_id}"
         
         # Vi tar bort ENERGY och TOTAL_INCREASING för att undvika spikar i dashboarden.
         # Statistiken sköts nu helt via coordinatorns bakgrundsjobb.
