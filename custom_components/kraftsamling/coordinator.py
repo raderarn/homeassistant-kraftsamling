@@ -14,47 +14,50 @@ from .const import DOMAIN, STATISTICS_ID_BASE
 _LOGGER = logging.getLogger(__name__)
 
 class KraftsamlingCoordinator(DataUpdateCoordinator):
-    """Coordinator to fetch and import data."""
+    """Coordinator to fetch and import historical consumption data."""
 
     def __init__(self, hass, api, config_entry):
-        """Initialize."""
+        """Initialize the coordinator."""
         super().__init__(hass, _LOGGER, name=DOMAIN, update_interval=timedelta(hours=1))
         self.api = api
         self.config_entry = config_entry
+        
+        # Parse start date and ensure it is timezone-aware (UTC)
         start_str = config_entry.data.get("start_date", "2024-01-01")
-        # Gör start_date timezone-aware (UTC)
         self.start_date = datetime.strptime(start_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
     async def _async_update_data(self):
-        """Fetch and sync statistics."""
+        """Fetch and sync statistics with the Home Assistant database."""
         selected_ids = self.config_entry.data.get("selected_facilities", [])
         if not selected_ids:
             return False
 
         for ext_id in selected_ids:
             try:
+                # Format the statistic_id to be lowercase and stripped of whitespace
                 stat_id = f"{STATISTICS_ID_BASE}{ext_id}".lower().strip()
 
+                # Get the last imported statistic to determine the starting point
                 last_stats = await get_instance(self.hass).async_add_executor_job(
                     get_last_statistics, self.hass, 1, stat_id, True, {"sum"}
                 )
 
-                # Sätt fetch_cursor och last_sum
                 if not last_stats or stat_id not in last_stats:
                     fetch_cursor = self.start_date
                     last_sum = 0.0
                 else:
+                    # Ensure the cursor is timezone-aware to allow comparison
                     last_stat_time = last_stats[stat_id][0]["start"]
-                    # Gör fetch_cursor timezone-aware
                     fetch_cursor = datetime.fromtimestamp(last_stat_time, tz=timezone.utc) + timedelta(hours=1)
                     last_sum = last_stats[stat_id][0]["sum"]
 
-                # Nu är 'now' också timezone-aware
                 now = datetime.now(timezone.utc)
                 current_sum = last_sum
 
+                # Process data in 30-day chunks to catch up to the current date
                 while fetch_cursor < now - timedelta(hours=1):
                     chunk_end = min(fetch_cursor + timedelta(days=30), now)
+                    
                     response_data = await self.api.async_get_volumes(
                         [ext_id], fetch_cursor.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d")
                     )
@@ -69,10 +72,19 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                     stats_to_import = []
                     for entry in new_entries:
                         try:
-                            # Gör ts timezone-aware
-                            ts = datetime.fromisoformat(entry["periodStart"].replace("Z", "+00:00"))
+                            # Handle different timestamp formats (aware/naive) to prevent comparison errors
+                            raw_ts = entry["periodStart"]
+                            if raw_ts.endswith("Z"):
+                                ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                            elif "+" not in raw_ts:
+                                # Force UTC if the API provides a naive datetime string
+                                ts = datetime.fromisoformat(raw_ts).replace(tzinfo=timezone.utc)
+                            else:
+                                ts = datetime.fromisoformat(raw_ts)
+
                             val = float(entry["quantity"])
-                            # Jämför med timezone-aware fetch_cursor
+                            
+                            # Comparison now works as both objects are timezone-aware
                             if ts >= fetch_cursor:
                                 current_sum += val
                                 stats_to_import.append(
@@ -91,11 +103,15 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                             statistic_id=stat_id,
                             unit_of_measurement="kWh",
                         )
+                        
+                        _LOGGER.info("Importing %s hours of data for %s", len(stats_to_import), ext_id)
                         async_import_statistics(self.hass, metadata, stats_to_import)
-                        # Uppdatera fetch_cursor korrekt med timezone-aware datetime
+                        
+                        # Move the cursor to the hour after the last imported record to continue the loop
                         fetch_cursor = stats_to_import[-1].start + timedelta(hours=1)
                     else:
                         break
+
             except Exception as err:
                 _LOGGER.error("Update failed for %s: %s", ext_id, err)
 
