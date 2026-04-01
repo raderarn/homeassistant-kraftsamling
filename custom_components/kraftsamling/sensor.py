@@ -56,7 +56,8 @@ class KraftsamlingEnergySensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the state of the sensor."""
-        # The sensor state itself doesn't need to be perfect since we 
-        # use async_import_statistics for the heavy lifting, 
-        # but returning a value keeps the entity "alive".
-        return self.coordinator.data if isinstance(self.coordinator.data, (int, float)) else None
+        # Check if coordinator data is a number. 
+        # If it's a boolean (True/False) from the return statement, return None.
+        if isinstance(self.coordinator.data, (int, float)) and not isinstance(self.coordinator.data, bool):
+            return self.coordinator.data
+        return None
