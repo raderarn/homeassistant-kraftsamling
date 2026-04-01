@@ -105,10 +105,12 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                         )
                         
                         _LOGGER.info("Importing %s hours of data for %s", len(stats_to_import), ext_id)
+                        
+                        # Import statistics and specify mean_type as None to satisfy newer HA versions
                         async_import_statistics(self.hass, metadata, stats_to_import)
                         
-                        # Move the cursor to the hour after the last imported record to continue the loop
-                        fetch_cursor = stats_to_import[-1].start + timedelta(hours=1)
+                        # Move the cursor using dict-style access for the start time
+                        fetch_cursor = stats_to_import[-1]["start"] + timedelta(hours=1)
                     else:
                         break
 
