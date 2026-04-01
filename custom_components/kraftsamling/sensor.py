@@ -1,4 +1,4 @@
-g"""Sensor platform for Kraftsamling."""
+"""Sensor platform for Kraftsamling."""
 from __future__ import annotations
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
