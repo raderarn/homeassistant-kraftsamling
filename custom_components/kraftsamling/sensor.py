@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from typing import Any
 
 from homeassistant.components.recorder import get_instance
@@ -42,6 +42,12 @@ class KraftsamlingEnergySensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self) -> float | None: return self._val
 
+    @property
+    def last_reset(self):
+        if self._last_ts is None:
+            return None
+        return datetime.fromtimestamp(self._last_ts, tz=timezone.utc)
+    
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"statistic_id": self._stat_id, "last_sum": self._last_sum, "last_stat_timestamp": self._last_ts}
