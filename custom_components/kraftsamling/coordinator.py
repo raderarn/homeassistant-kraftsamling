@@ -77,7 +77,7 @@ class KraftsamlingCoordinator(DataUpdateCoordinator):
                         # Safely get the sum to avoid KeyError
                         self.last_sum = last_stat.get("sum", 0.0)
 
-                now = datetime.now(timezone.utc)
+                now = datetime.now(CET_FIXED)
                 current_sum = self.last_sum
 
                 # 2. Fetch data in chunks from the last known point until now
